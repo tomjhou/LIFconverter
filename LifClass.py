@@ -26,9 +26,15 @@ class LifClass(LifFile):
 
         self.file_name = os.path.basename(file_path)
         self.file_path = file_path
-        LifFile.__init__(self, file_path)
+
+        try:
+            LifFile.__init__(self, file_path)
+        except Exception as e:
+            print(f'  Error encounterd while opening LIF file: {e}')
+            print('  Please check whether file is corrupted.')
 
     def prompt_select_image(self):
+
         img_list = [i for i in self.get_iter_image()]
         print(f'\nChoose image to convert within file "{self.file_name}":')
         for n in range(len(img_list)):
@@ -44,7 +50,12 @@ class LifClass(LifFile):
         # Access a specific image directly
         # img_0 = new.get_image(0)
         # Create a list of images using a generator
-        img_list = [i for i in self.get_iter_image()]
+        try:
+            img_list = [i for i in self.get_iter_image()]
+        except Exception as e:
+            print(f'  Error while reading image list: {e}')
+            print('  Unable to convert file, will skip')
+            return
 
         xml_metadata = self.xml_root.findall("./Element/Children/Element/Data/Image")
 
@@ -113,12 +124,15 @@ class LifClass(LifFile):
             start = time.time()
 
             if z_depth > 1:
+                print(f'    Found z-stack of depth {z_depth}, will scan all images and select brightest value for each pixel.')
                 for k in range(z_depth):
+                    print('.', end="")
                     f = img.get_frame(z=k, t=0, c=m)
                     if k == 0:
                         ar = np.array(f)
                     else:
                         ar = np.maximum(ar, np.array(f))
+                    print()
             else:
                 # Access a specific item
                 f = img.get_frame(z=0, t=0, c=m)
