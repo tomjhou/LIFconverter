@@ -24,7 +24,11 @@ if answer == '1':
         if f.is_dir():
             continue
 
-        print(f'\nProcessing file {f.path}')
+        path_ext = os.path.splitext(f)
+        if path_ext[1] != '.lif':
+            continue
+
+        print(f'\nProcessing file {f.name}')
         l1 = LifClass(f.path)
         l1.convert()
 
