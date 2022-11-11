@@ -45,7 +45,8 @@ class LifClass(LifFile):
 
         return int(answer)
 
-    def convert(self, n = -1):
+    # Convert one or more images in a single file
+    def convert(self, n=-1):
 
         # Access a specific image directly
         # img_0 = new.get_image(0)
@@ -59,17 +60,25 @@ class LifClass(LifFile):
 
         xml_metadata = self.xml_root.findall("./Element/Children/Element/Data/Image")
 
+        # Write metadata to XML file
+        paths = os.path.splitext(self.file_path)
+        xml_path = paths[0] + ".xml"
+
+        with open(xml_path, 'w') as f:
+            f.write(self.xml_header)
+
         if n < 0:
             # Convert all images in file
             print(f'Found {len(img_list)} images in file "{self.file_name}".')
             for n in range(len(img_list)):
                 print(f'  Processing image {img_list[n].name}')
-                self.convert_one(img_list[n], xml_metadata[n])
+                self.convert_image(img_list[n], xml_metadata[n])
         else:
             # Convert single image
-            self.convert_one(img_list[n], xml_metadata[n])
+            self.convert_image(img_list[n], xml_metadata[n])
 
-    def convert_one(self, img, xml_metadata):
+    # Convert a single image within this file.
+    def convert_image(self, img, xml_metadata):
 
         if img.dims.m > 1:
             # This is a set of unmerged tiles. Just skip
@@ -113,7 +122,7 @@ class LifClass(LifFile):
         for m in range(n_chan):
 
             color = xml_chans[m].attrib["LUTName"]
-            print(f'  Generating image for color {color}: ')
+            print(f'    Generating image for color {color}: ')
             xml_scale = xml_scales[-(n_chan - m)]
             white_value = xml_scale.attrib["WhiteValue"]
             black_value = xml_scale.attrib["BlackValue"]
@@ -124,7 +133,7 @@ class LifClass(LifFile):
             start = time.time()
 
             if z_depth > 1:
-                print(f'    Found z-stack of depth {z_depth}, will scan all images and select brightest value for each pixel.')
+                print(f'      Found z-stack of depth {z_depth}, will scan all images and select brightest value for each pixel (which may come from different z-planes).')
                 for k in range(z_depth):
                     print('.', end="")
                     f = img.get_frame(z=k, t=0, c=m)
@@ -147,8 +156,11 @@ class LifClass(LifFile):
 
             scale = 1.0 / (white_value - black_value)
 
-            offset1 = black_value * max_val
+            offset1 = round(black_value * max_val)    # Using round() because that seems to match better what LASX seems to work that way.
 
+            # Bin several rows together to speed up processing. This is more advantageous
+            # if rows are small. As they get bigger, the advantage diminishes, and may even
+            # reverse for unknown reasons (memory limit?)
             chunk_h = img.dims.x    #  * bit_depth / 8
             if chunk_h < 4000:
                 chunk_v = 32
@@ -164,21 +176,22 @@ class LifClass(LifFile):
             row = 0
 
             # Rescale image intensity with respect to black_level and white_level.
-            # Not sure how to determine optimal chunk size. There is definitely a point
-            # beyond which it becomes counterproductive, but I don't know how to determine this
-            # rationally.
             while row < d[0]:
                 if row + chunk_v > d[0]:
+                    # Final chunk may be smaller than the previous ones.
                     chunk_v = d[0] - row
+                # Convert one chunk to float
                 one_row = ar[row:row + chunk_v,].astype(float)
                 one_row = (one_row - offset1) * scale
+                # Truncate underflow and overflow values.
                 one_row[one_row < 0] = 0
                 one_row[one_row > max_val] = max_val
+                # Demote back to original data type and rewrite
                 ar[row:row + chunk_v,] = one_row.astype(pixel_type)
                 row += chunk_v
 
             end = time.time()
-            print(f'    Completed in {end - start} seconds.')
+            print(f'      Completed in {end - start} seconds.')
 
             if color == "Green":
                 img_green = ar
@@ -198,11 +211,10 @@ class LifClass(LifFile):
             if img_blue is not None:
                 # We have both blue and cyan channels. Merge cyan into main image, but at 3/4 brightness to avoid saturation.
                 if True:
-                    # If we have both blue and cyan, then merge it into green and blue
-                    # We have to promote datatype to 32-bit, or else numbers will overflow.
-                    # Also, we have to group terms carefully with parentheses, otherwise
-                    # + takes precedence over >>.
-                    img_cyan = img_cyan.astype(np.uint32) >> 1
+                    # If we have both blue and cyan, then merge it into green and blue channels.
+                    # Note: we have to temporarily promote datatype to 32-bit, or else numbers will overflow,
+                    # and then demote back to original datatype.
+                    img_cyan = img_cyan.astype(np.uint32) >> 1   # We divide by two, otherwise cyan tends to overwhelm green/blue
                     img_green = img_green.astype(np.uint32) + img_cyan
                     img_blue  = img_blue.astype(np.uint32) + img_cyan
 

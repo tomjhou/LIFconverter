@@ -32,6 +32,8 @@ if answer == '1':
         l1 = LifClass(f.path)
         l1.convert()
 
+    print('\nCompleted processing of folder\n')
+
 elif answer == '2':
 
     l1 = LifClass()
