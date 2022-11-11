@@ -2,8 +2,6 @@ from readlif.reader import LifFile
 import tkinter as tk
 from tkinter import filedialog
 import numpy as np
-from PIL import Image
-from matplotlib import pyplot as plt
 import time
 import cv2
 import os
@@ -17,6 +15,7 @@ class LifClass(LifFile):
 
             root = tk.Tk()
             root.withdraw()
+            root.attributes('-topmost', True)  # Opened windows will be active. above all windows despite selection.
 
             file_path = filedialog.askopenfilename(filetypes=[("LIF files", "*.lif")])
 
@@ -122,10 +121,15 @@ class LifClass(LifFile):
         for m in range(n_chan):
 
             color = xml_chans[m].attrib["LUTName"]
-            print(f'    Generating image for color {color}: ')
-            xml_scale = xml_scales[-(n_chan - m)]
-            white_value = xml_scale.attrib["WhiteValue"]
-            black_value = xml_scale.attrib["BlackValue"]
+            print(f'  Generating image for color {color}: ')
+            if (n_chan - m) <= len(xml_scales):
+                xml_scale = xml_scales[-(n_chan - m)]
+                white_value = xml_scale.attrib["WhiteValue"]
+                black_value = xml_scale.attrib["BlackValue"]
+            else:
+                # Some images, like snapshots, may not have ChannelScalingInfo. Just use defaults.
+                white_value = 1
+                black_value = 0
 
             white_value = float(white_value)
             black_value = float(black_value)
@@ -133,7 +137,8 @@ class LifClass(LifFile):
             start = time.time()
 
             if z_depth > 1:
-                print(f'      Found z-stack of depth {z_depth}, will scan all images and select brightest value for each pixel (which may come from different z-planes).')
+                print(f'      Found z-stack of depth {z_depth}, will scan all images and select brightest value for '
+                      f'each pixel (which may come from different z-planes).')
                 for k in range(z_depth):
                     print('.', end="")
                     f = img.get_frame(z=k, t=0, c=m)
@@ -141,7 +146,7 @@ class LifClass(LifFile):
                         ar = np.array(f)
                     else:
                         ar = np.maximum(ar, np.array(f))
-                    print()
+                print()
             else:
                 # Access a specific item
                 f = img.get_frame(z=0, t=0, c=m)
@@ -156,7 +161,7 @@ class LifClass(LifFile):
 
             scale = 1.0 / (white_value - black_value)
 
-            offset1 = round(black_value * max_val)    # Using round() because that seems to match better what LASX seems to work that way.
+            offset1 = round(black_value * max_val)    # Using round() because that seems to match LASX
 
             # Bin several rows together to speed up processing. This is more advantageous
             # if rows are small. As they get bigger, the advantage diminishes, and may even
@@ -181,13 +186,13 @@ class LifClass(LifFile):
                     # Final chunk may be smaller than the previous ones.
                     chunk_v = d[0] - row
                 # Convert one chunk to float
-                one_row = ar[row:row + chunk_v,].astype(float)
+                one_row = ar[row:row + chunk_v, ].astype(float)
                 one_row = (one_row - offset1) * scale
                 # Truncate underflow and overflow values.
                 one_row[one_row < 0] = 0
                 one_row[one_row > max_val] = max_val
                 # Demote back to original data type and rewrite
-                ar[row:row + chunk_v,] = one_row.astype(pixel_type)
+                ar[row:row + chunk_v, ] = one_row.astype(pixel_type)
                 row += chunk_v
 
             end = time.time()
@@ -209,14 +214,14 @@ class LifClass(LifFile):
 
         if img_cyan is not None:
             if img_blue is not None:
-                # We have both blue and cyan channels. Merge cyan into main image, but at 3/4 brightness to avoid saturation.
+                # Have both blue and cyan channels. Merge cyan into main image, at reduced brightness
                 if True:
                     # If we have both blue and cyan, then merge it into green and blue channels.
                     # Note: we have to temporarily promote datatype to 32-bit, or else numbers will overflow,
                     # and then demote back to original datatype.
-                    img_cyan = img_cyan.astype(np.uint32) >> 1   # We divide by two, otherwise cyan tends to overwhelm green/blue
+                    img_cyan = img_cyan.astype(np.uint32) >> 1   # divide by two
                     img_green = img_green.astype(np.uint32) + img_cyan
-                    img_blue  = img_blue.astype(np.uint32) + img_cyan
+                    img_blue = img_blue.astype(np.uint32) + img_cyan
 
                     img_green[img_green > max_val] = max_val
                     img_blue[img_blue > max_val] = max_val
@@ -239,7 +244,6 @@ class LifClass(LifFile):
         # imwrite requires BGR order, backwards from usual RGB
         merged = np.dstack((img_blue, img_green, img_red))
         self.write_jpg(merged, img.name, "_RGB", bit_depth)
-
 
     def write_jpg(self, merged, img_name, suffix, source_bit_depth):
 
