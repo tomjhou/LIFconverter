@@ -19,7 +19,6 @@ class LifClass(LifFile):
 
             file_path = filedialog.askopenfilename(filetypes=[("LIF files", "*.lif")])
 
-            #            [filename, pathname] = uigetfile({'*.lif', 'Leica Image Format (*.lif)'})
             if file_path == "":
                 raise 'No file selected, will quit\n'
 
@@ -29,7 +28,7 @@ class LifClass(LifFile):
         try:
             LifFile.__init__(self, file_path)
         except Exception as e:
-            print(f'  Error encounterd while opening LIF file: {e}')
+            print(f'  Error encountered while opening LIF file: {e}')
             print('  Please check whether file is corrupted.')
 
     def prompt_select_image(self):
@@ -47,6 +46,9 @@ class LifClass(LifFile):
     # Convert one or more images in a single file
     def convert(self, n=-1, write_xml_metadata=False):
 
+        numFilesCompleted = 0
+        numImagesCompleted = 0
+
         # Access a specific image directly
         # img_0 = new.get_image(0)
         # Create a list of images using a generator
@@ -55,7 +57,7 @@ class LifClass(LifFile):
         except Exception as e:
             print(f'\n  Error while reading image list: {e}')
             print('  Unable to convert file, possibly due to file corruption or truncation. Will skip')
-            return
+            return 0
 
         xml_metadata = self._recursive_metadata_find(self.xml_root, )  # self.xml_root.findall("./Element/Children/Element/Data/Image")
 
@@ -72,10 +74,15 @@ class LifClass(LifFile):
             print(f'Found {len(img_list)} images in file "{self.file_name}".')
             for n in range(len(img_list)):
                 print(f'  Processing image {img_list[n].name}')
-                self.convert_image(img_list[n], xml_metadata[n])
+                numImagesCompleted += self.convert_image(img_list[n], xml_metadata[n])
+            numFilesCompleted += 1
         else:
             # Convert single image
-            self.convert_image(img_list[n], xml_metadata[n])
+            if self.convert_image(img_list[n], xml_metadata[n]) > 0:
+                numFilesCompleted += 1
+                numImagesCompleted += 1
+
+        return numFilesCompleted, numImagesCompleted
 
     # Convert a single image within this file.
     def convert_image(self, img, xml_metadata):
@@ -83,7 +90,7 @@ class LifClass(LifFile):
         if img.dims.m > 1:
             print(f'    Found {img.dims.m} unmerged tiles. Skipping.')
             # This is a set of unmerged tiles. Just skip
-            return
+            return 0
 
         # Determine whether this is a z-stack
         z_depth = img.dims.z
@@ -95,7 +102,7 @@ class LifClass(LifFile):
         bit_depth = img.bit_depth
 
         # bit_depth is a list with one element per channel.
-        if len(bit_depth) > 1:
+        if type(bit_depth) is tuple:
             bit_depth = bit_depth[0]
 
         if bit_depth == 16:
@@ -116,6 +123,7 @@ class LifClass(LifFile):
         img_red = None
         img_blue = None
         img_cyan = None
+        img_magenta = None
 
         print(f'    Image size is: width {img.dims.x} x height {img.dims.y}')
         print(f'    Found {n_chan} color channels, bit depth is {bit_depth}')
@@ -208,6 +216,20 @@ class LifClass(LifFile):
                 img_blue = ar
             elif color == "Cyan":
                 img_cyan = ar
+            elif color == "Magenta":
+                img_magenta = ar
+
+        if img_magenta is not None:
+            if img_red is None and img_blue is None:
+                img_red = img_magenta
+                img_blue = img_magenta
+            elif img_red is None and img_blue is not None:
+                img_red = img_magenta
+            elif img_blue is None and img_red is not None:
+                img_blue = img_magenta
+            else:
+                img_red = img_magenta >> 1
+                img_blue = img_magenta >> 1
 
         if img_red is None:
             img_red = np.zeros(d, dtype=pixel_type_string)
@@ -247,6 +269,8 @@ class LifClass(LifFile):
         merged = np.dstack((img_blue, img_green, img_red))
         self.write_jpg(merged, img.name, "_RGB", bit_depth)
 
+        return 1
+
     def write_jpg(self, merged, img_name, suffix, source_bit_depth):
 
         # Make sure img_name doesn't have any slashes, as that will mess up filename saving
@@ -265,6 +289,7 @@ class LifClass(LifFile):
         end = time.time()
         print(f'    Completed in {end - start} seconds.')
 
+    # Recursively finds metadata for all elements having a "Data/Image" subunit.
     def _recursive_metadata_find(self, tree, return_list=None, path=""):
         """Creates list of images by parsing the XML header recursively"""
 

@@ -36,9 +36,9 @@ if answer == '1':
 
             print(f'\nProcessing file {f.name}')
             l1 = LifClass(f.path)
-            l1.convert(write_xml_metadata=WriteMetadata)
+            r = l1.convert(write_xml_metadata=WriteMetadata)
 
-        print('\nCompleted conversion of all LIF files in folder\n')
+        print(f'\nCompleted conversion of {r[0]} images in {r[1]} LIF files in folder\n')
     else:
         print('\nNo folder chosen.\n')
 
