@@ -45,7 +45,7 @@ class LifClass(LifFile):
         return int(answer)
 
     # Convert one or more images in a single file
-    def convert(self, n=-1):
+    def convert(self, n=-1, write_xml_metadata=False):
 
         # Access a specific image directly
         # img_0 = new.get_image(0)
@@ -57,14 +57,15 @@ class LifClass(LifFile):
             print('  Unable to convert file, will skip')
             return
 
-        xml_metadata = self.xml_root.findall("./Element/Children/Element/Data/Image")
+        xml_metadata = self._recursive_metadata_find(self.xml_root, )  # self.xml_root.findall("./Element/Children/Element/Data/Image")
 
-        # Write metadata to XML file
-        paths = os.path.splitext(self.file_path)
-        xml_path = paths[0] + ".xml"
+        if write_xml_metadata:
+            # Write metadata to XML file
+            paths = os.path.splitext(self.file_path)
+            xml_path = paths[0] + ".xml"
 
-        with open(xml_path, 'w') as f:
-            f.write(self.xml_header)
+            with open(xml_path, 'w') as f:
+                f.write(self.xml_header)
 
         if n < 0:
             # Convert all images in file
@@ -80,15 +81,16 @@ class LifClass(LifFile):
     def convert_image(self, img, xml_metadata):
 
         if img.dims.m > 1:
+            print(f'    Found {img.dims.m} unmerged tiles. Skipping.')
             # This is a set of unmerged tiles. Just skip
             return
 
         # Determine whether this is a z-stack
         z_depth = img.dims.z
 
-        xml_chans = xml_metadata.findall("./ImageDescription/Channels/ChannelDescription")
+        xml_chans = xml_metadata['metadata_xml'].findall("./Data/Image/ImageDescription/Channels/ChannelDescription")
         n_chan = len(xml_chans)
-        xml_scales = xml_metadata.findall("./Attachment/ChannelScalingInfo")
+        xml_scales = xml_metadata['metadata_xml'].findall("./Data/Image/Attachment/ChannelScalingInfo")
 
         bit_depth = img.bit_depth
 
@@ -115,13 +117,13 @@ class LifClass(LifFile):
         img_blue = None
         img_cyan = None
 
-        print(f'  Image size is: width {img.dims.x} x height {img.dims.y}')
-        print(f'  Found {n_chan} color channels, bit depth is {bit_depth}')
+        print(f'    Image size is: width {img.dims.x} x height {img.dims.y}')
+        print(f'    Found {n_chan} color channels, bit depth is {bit_depth}')
 
         for m in range(n_chan):
 
             color = xml_chans[m].attrib["LUTName"]
-            print(f'  Generating image for color {color}: ')
+            print(f'      Generating image for channel {color}: ')
             if (n_chan - m) <= len(xml_scales):
                 xml_scale = xml_scales[-(n_chan - m)]
                 white_value = xml_scale.attrib["WhiteValue"]
@@ -196,7 +198,7 @@ class LifClass(LifFile):
                 row += chunk_v
 
             end = time.time()
-            print(f'      Completed in {end - start} seconds.')
+            print(f'        Completed in {end - start} seconds.')
 
             if color == "Green":
                 img_green = ar
@@ -247,10 +249,14 @@ class LifClass(LifFile):
 
     def write_jpg(self, merged, img_name, suffix, source_bit_depth):
 
+        # Make sure img_name doesn't have any slashes, as that will mess up filename saving
+        # Replace any slahes with dashes.
+        img_name = img_name.replace('/', '-')
+        img_name = img_name.replace('\\', '-')
         # Split path into root and extension
         paths = os.path.splitext(self.file_path)
         new_path = paths[0] + "_" + img_name + suffix + ".jpg"
-        print('  Writing RGB merged file: "' + os.path.basename(new_path) + '"')
+        print('    Writing RGB merged file: "' + os.path.basename(new_path) + '"')
         start = time.time()
         if source_bit_depth == 16:
             # JPG only supports 8-bit depth?
@@ -258,3 +264,41 @@ class LifClass(LifFile):
         cv2.imwrite(new_path, merged, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
         end = time.time()
         print(f'    Completed in {end - start} seconds.')
+
+    def _recursive_metadata_find(self, tree, return_list=None, path=""):
+        """Creates list of images by parsing the XML header recursively"""
+
+        if return_list is None:
+            return_list = []
+
+        children = tree.findall("./Children/Element")
+        if len(children) < 1:  # Fix for 'first round'
+            children = tree.findall("./Element")
+        for item in children:
+            folder_name = item.attrib["Name"]
+            # Grab the .lif filename name on the first execution
+            if path == "":
+                appended_path = folder_name
+            else:
+                appended_path = path + "/" + folder_name
+            # This finds empty folders
+            has_sub_children = len(item.findall("./Children/Element/Data")) > 0
+
+            is_image = (
+                len(item.findall("./Data/Image")) > 0
+            )
+
+            if is_image:
+                # If additional XML data extraction is needed, add it here.
+
+                data_dict = {
+                    "metadata_xml": item
+                }
+
+                return_list.append(data_dict)
+
+            # An image can have sub_children, it is not mutually exclusive
+            if has_sub_children:
+                self._recursive_metadata_find(item, return_list, appended_path)
+
+        return return_list
