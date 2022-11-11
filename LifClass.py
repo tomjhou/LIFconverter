@@ -53,8 +53,8 @@ class LifClass(LifFile):
         try:
             img_list = [i for i in self.get_iter_image()]
         except Exception as e:
-            print(f'  Error while reading image list: {e}')
-            print('  Unable to convert file, will skip')
+            print(f'\n  Error while reading image list: {e}')
+            print('  Unable to convert file, possibly due to file corruption or truncation. Will skip')
             return
 
         xml_metadata = self._recursive_metadata_find(self.xml_root, )  # self.xml_root.findall("./Element/Children/Element/Data/Image")
