@@ -283,8 +283,25 @@ class LifClass(LifFile):
         print('    Writing RGB merged file: "' + os.path.basename(new_path) + '"')
         start = time.time()
         if source_bit_depth == 16:
-            # JPG only supports 8-bit depth?
-            merged = merged / 256
+            # JPG only supports 8-bit depth, so divide by 256 using
+            # memory-efficient method
+            chunk_v = 4
+            row = 0
+            d = merged.shape
+            while row < d[0]:
+                if row + chunk_v > d[0]:
+                    # Final chunk may be smaller than the previous ones.
+                    chunk_v = d[0] - row
+                # Convert one chunk to float
+                one_row = merged[row:row + chunk_v, ].astype(float)
+                one_row = one_row / 256
+                # Truncate underflow and overflow values.
+                one_row[one_row > 255] = 255
+                # Demote back to original data type and rewrite
+                merged[row:row + chunk_v, ] = one_row.astype(np.uint16)
+                row += chunk_v
+
+#            merged = merged / 256
         cv2.imwrite(new_path, merged, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
         end = time.time()
         print(f'    Completed in {end - start} seconds.')
