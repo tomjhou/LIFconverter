@@ -6,14 +6,26 @@ import time
 import cv2                            # install with pip install opencv-python
 import os
 import enum
+from pathlib import Path
 
 
 class LifClass(LifFile):
-    class Format(enum.Enum):
-        jpg = 1
-        tiff = 2
+    class Options:
 
-    def __init__(self, file_path=""):
+        class Format(enum.Enum):
+            none = 0
+            jpg = 1
+            tiff = 2
+
+        write_xml_metadata = False
+        overwrite_existing = True
+
+        def __init__(self):
+            self.convert_format = self.Format.none
+
+    conversion_options = Options()
+
+    def __init__(self, file_path:str = "", conversion_options: Options = None):
 
         if file_path == "":
 
@@ -28,6 +40,8 @@ class LifClass(LifFile):
 
         self.file_name = os.path.basename(file_path)
         self.file_path = file_path
+        if conversion_options is not None:
+            self.conversion_options = conversion_options
 
         try:
             LifFile.__init__(self, file_path)
@@ -48,10 +62,10 @@ class LifClass(LifFile):
         return int(answer)
 
     # Convert one or more images in a single file
-    def convert(self, n=-1, write_xml_metadata=False, convert_format: Format = Format.jpg):
+    def convert(self, n:int = -1):
 
-        numFilesCompleted = 0
-        numImagesCompleted = 0
+        num_files_completed = 0
+        num_images_completed = 0
 
         # Access a specific image directly
         # img_0 = new.get_image(0)
@@ -61,12 +75,12 @@ class LifClass(LifFile):
         except Exception as e:
             print(f'\n  Error while reading image list: {e}')
             print('  Unable to convert file, possibly due to file corruption or truncation. Will skip')
-            return 0
+            return 0, 0
 
         xml_metadata = self._recursive_metadata_find(
             self.xml_root, )  # self.xml_root.findall("./Element/Children/Element/Data/Image")
 
-        if write_xml_metadata:
+        if self.conversion_options.write_xml_metadata:
             # Write metadata to XML file
             paths = os.path.splitext(self.file_path)
             xml_path = paths[0] + ".xml"
@@ -76,26 +90,33 @@ class LifClass(LifFile):
 
         if n < 0:
             # Convert all images in file
-            print(f'Found {len(img_list)} images in file "{self.file_name}".')
+            print(f'  Found {len(img_list)} images in file "{self.file_name}".')
             for n in range(len(img_list)):
-                print(f'  Processing image {img_list[n].name}')
-                numImagesCompleted += self.convert_image(img_list[n], xml_metadata[n], convert_format=convert_format)
-            numFilesCompleted += 1
+                num_images_completed += self.convert_image(img_list[n], xml_metadata[n])
+            num_files_completed += 1
         else:
             # Convert single image
-            if self.convert_image(img_list[n], xml_metadata[n], convert_format=convert_format) > 0:
-                numFilesCompleted += 1
-                numImagesCompleted += 1
+            if self.convert_image(img_list[n], xml_metadata[n]) > 0:
+                num_files_completed += 1
+                num_images_completed += 1
 
-        return numFilesCompleted, numImagesCompleted
+        return num_files_completed, num_images_completed
 
     # Convert a single image within this file.
-    def convert_image(self, img, xml_metadata, convert_format: Format = Format.jpg):
+    def convert_image(self, img, xml_metadata):
 
         if img.dims.m > 1:
             print(f'    Found {img.dims.m} unmerged tiles. Skipping.')
             # This is a set of unmerged tiles. Just skip
             return 0
+
+        f_path = self.generate_filepath(img.name)
+
+        if Path(f_path).is_file() and not self.conversion_options.overwrite_existing:
+            print(f'    Image already converted. SKIPPING')  # "{os.path.basename(f_path)}"')
+            return 0
+
+        print(f'  Processing image {img.name}')
 
         # Determine whether this is a z-stack
         z_depth = img.dims.z
@@ -278,14 +299,16 @@ class LifClass(LifFile):
         # imwrite requires BGR order, backwards from usual RGB
         merged = np.dstack((img_blue, img_green, img_red))
 
-        if convert_format == self.Format.jpg:
-            self.write_jpg(merged, img.name, "_RGB", bit_depth)
-        elif convert_format == self.Format.tiff:
-            self.write_tiff(merged, img.name, "_RGB", bit_depth)
+        if self.conversion_options.convert_format == self.Options.Format.jpg:
+            self.write_jpg(merged, img.name, bit_depth)
+        elif self.conversion_options.convert_format == self.Options.Format.tiff:
+            self.write_tiff(merged, img.name)
 
         return 1
 
-    def write_jpg(self, merged, img_name, suffix, source_bit_depth):
+    def generate_filepath(self, img_name):
+
+        suffix = "_RGB"
 
         # Make sure img_name doesn't have any slashes, as that will mess up filename saving
         # Replace any slashes with dashes.
@@ -293,7 +316,18 @@ class LifClass(LifFile):
         img_name = img_name.replace('\\', '-')
         # Split path into root and extension
         paths = os.path.splitext(self.file_path)
-        new_path = paths[0] + "_" + img_name + suffix + ".jpg"
+        if self.conversion_options.convert_format == self.Options.Format.jpg:
+            ext = ".jpg"
+        elif self.conversion_options.convert_format == self.Options.Format.tiff:
+            ext = ".tiff"
+        else:
+            raise "Unknown format " + self.conversion_options.convert_format
+
+        return paths[0] + "_" + img_name + suffix + ext
+
+    def write_jpg(self, merged, img_name, source_bit_depth):
+
+        new_path = self.generate_filepath(img_name)
         print('    Writing RGB merged file: "' + os.path.basename(new_path) + '"')
         start = time.time()
         if source_bit_depth == 16:
@@ -319,15 +353,9 @@ class LifClass(LifFile):
         end = time.time()
         print(f'    Completed in {end - start} seconds.')
 
-    def write_tiff(self, merged, img_name, suffix, source_bit_depth):
+    def write_tiff(self, merged, img_name):
 
-        # Make sure img_name doesn't have any slashes, as that will mess up filename saving
-        # Replace any slashes with dashes.
-        img_name = img_name.replace('/', '-')
-        img_name = img_name.replace('\\', '-')
-        # Split path into root and extension
-        paths = os.path.splitext(self.file_path)
-        new_path = paths[0] + "_" + img_name + suffix + ".tiff"
+        new_path = self.generate_filepath(img_name)
         print('    Writing RGB merged file: "' + os.path.basename(new_path) + '"')
         start = time.time()
 

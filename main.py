@@ -4,32 +4,35 @@ from tkinter import filedialog
 import os
 
 print('\nSelect what to convert:')
-print('1. All .LIF files in one folder')
+print('1. All .LIF files in one folder (DEFAULT)')
 print('2. Single .LIF file')
 print('3. Single image within single .LIF file')
 answer_source = input('Make selection (default = 1): ')
 if answer_source == '':
     answer_source = '1'
 
-print('\nSelect format to conver to:')
-print('1. JPG (90% quality, much smaller files, highly recommended)')
+conversion_options = LifClass.Options()
+
+print('\nSelect format to convert to:')
+print('1. JPG (90% quality, much smaller files, highly recommended, DEFAULT)')
 print('2. TIFF (larger files, but compression is lossless. Only use if higher quality is absolutely necessary. Not tested for files >4GB')
-answer_format = input('Make selection (default = 1): ')
-if answer_format == '':
-    answer_format = '1'
-
-if answer_format == '1':
-    convert_format = LifClass.Format.jpg
-elif answer_format == '2':
-    convert_format = LifClass.Format.tiff
+answer = input('Make selection (default = 1): ')
+if answer == '' or answer == '1':
+    conversion_options.convert_format = LifClass.Options.Format.jpg
+elif answer == '2':
+    conversion_options.convert_format = LifClass.Options.Format.tiff
 else:
-    convert_format = LifClass.Format.jpg
+    conversion_options.convert_format = LifClass.Options.Format.jpg
 
-answer_metadata = input('\nWrite each LIF file\'s metadata to XML file? (y/n, default = n):')
-if answer_metadata == '':
-    answer_metadata = 'n'
+print('\nOverwrite files that already exist?')
+print('y. Use this if files have changed')
+print('n. This saves time by skipping files that were already converte earlier (DEFAULT)')
+answer = input('Make selection (default = n): ')
+conversion_options.overwrite_existing = (answer == 'y')
 
-WriteMetadata = (answer_metadata == 'y')
+
+answer = input('\nWrite each LIF file\'s metadata to XML file? (y/n, default = n):')
+conversion_options.write_xml_metadata = (answer == 'y')
 
 if answer_source == '1':
     root = tk.Tk()  # pointing root to Tk() to use it as Tk() in program.
@@ -40,6 +43,9 @@ if answer_source == '1':
     if folder_path != '':
         files = os.scandir(folder_path)
 
+        num_files_done = 0
+        num_images_done = 0
+
         for f in files:
             if f.is_dir():
                 continue
@@ -49,23 +55,25 @@ if answer_source == '1':
                 continue
 
             print(f'\nProcessing file {f.name}')
-            l1 = LifClass(f.path)
-            r = l1.convert(write_xml_metadata=WriteMetadata, convert_format=convert_format)
+            l1 = LifClass(f.path, conversion_options=conversion_options)
+            r = l1.convert()
+            num_files_done += r[0]
+            num_images_done += r[1]
 
-        print(f'\nCompleted conversion of {r[0]} images in {r[1]} LIF files in folder\n')
+        print(f'\nCompleted conversion of {num_images_done} images in {num_files_done} LIF files in folder\n')
     else:
         print('\nNo folder chosen.\n')
 
 elif answer_source == '2':
 
-    l1 = LifClass()
-    l1.convert(write_xml_metadata=WriteMetadata, convert_format=convert_format)
+    l1 = LifClass(conversion_options=conversion_options)
+    l1.convert()
 
 elif answer_source == '3':
 
-    l1 = LifClass()
+    l1 = LifClass(conversion_options=conversion_options)
     n = l1.prompt_select_image()
-    l1.convert(n, write_xml_metadata=WriteMetadata, convert_format=convert_format)
+    l1.convert(n)
 
 else:
     print('No valid option selected. Will not do anything')
