@@ -1,9 +1,9 @@
-from readlif.reader import LifFile
+from readlif.reader import LifFile    # install with pip install readlif
 import tkinter as tk
 from tkinter import filedialog
 import numpy as np
 import time
-import cv2
+import cv2                            # install with pip install opencv-python
 import os
 import enum
 
