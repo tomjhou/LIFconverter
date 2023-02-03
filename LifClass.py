@@ -5,9 +5,13 @@ import numpy as np
 import time
 import cv2
 import os
+import enum
 
 
 class LifClass(LifFile):
+    class Format(enum.Enum):
+        jpg = 1
+        tiff = 2
 
     def __init__(self, file_path=""):
 
@@ -44,7 +48,7 @@ class LifClass(LifFile):
         return int(answer)
 
     # Convert one or more images in a single file
-    def convert(self, n=-1, write_xml_metadata=False):
+    def convert(self, n=-1, write_xml_metadata=False, convert_format: Format = Format.jpg):
 
         numFilesCompleted = 0
         numImagesCompleted = 0
@@ -59,7 +63,8 @@ class LifClass(LifFile):
             print('  Unable to convert file, possibly due to file corruption or truncation. Will skip')
             return 0
 
-        xml_metadata = self._recursive_metadata_find(self.xml_root, )  # self.xml_root.findall("./Element/Children/Element/Data/Image")
+        xml_metadata = self._recursive_metadata_find(
+            self.xml_root, )  # self.xml_root.findall("./Element/Children/Element/Data/Image")
 
         if write_xml_metadata:
             # Write metadata to XML file
@@ -74,18 +79,18 @@ class LifClass(LifFile):
             print(f'Found {len(img_list)} images in file "{self.file_name}".')
             for n in range(len(img_list)):
                 print(f'  Processing image {img_list[n].name}')
-                numImagesCompleted += self.convert_image(img_list[n], xml_metadata[n])
+                numImagesCompleted += self.convert_image(img_list[n], xml_metadata[n], convert_format=convert_format)
             numFilesCompleted += 1
         else:
             # Convert single image
-            if self.convert_image(img_list[n], xml_metadata[n]) > 0:
+            if self.convert_image(img_list[n], xml_metadata[n], convert_format=convert_format) > 0:
                 numFilesCompleted += 1
                 numImagesCompleted += 1
 
         return numFilesCompleted, numImagesCompleted
 
     # Convert a single image within this file.
-    def convert_image(self, img, xml_metadata):
+    def convert_image(self, img, xml_metadata, convert_format: Format = Format.jpg):
 
         if img.dims.m > 1:
             print(f'    Found {img.dims.m} unmerged tiles. Skipping.')
@@ -128,6 +133,8 @@ class LifClass(LifFile):
         print(f'    Image size is: width {img.dims.x} x height {img.dims.y}')
         print(f'    Found {n_chan} color channels, bit depth is {bit_depth}')
 
+        d = None
+
         for m in range(n_chan):
 
             color = xml_chans[m].attrib["LUTName"]
@@ -149,6 +156,9 @@ class LifClass(LifFile):
             if z_depth > 1:
                 print(f'      Found z-stack of depth {z_depth}, will scan all images and select brightest value for '
                       f'each pixel (which may come from different z-planes).')
+
+                ar = None
+
                 for k in range(z_depth):
                     print('.', end="")
                     f = img.get_frame(z=k, t=0, c=m)
@@ -171,12 +181,12 @@ class LifClass(LifFile):
 
             scale = 1.0 / (white_value - black_value)
 
-            offset1 = round(black_value * max_val)    # Using round() because that seems to match LASX
+            offset1 = round(black_value * max_val)  # Using round() because that seems to match LASX
 
             # Bin several rows together to speed up processing. This is more advantageous
             # if rows are small. As they get bigger, the advantage diminishes, and may even
             # reverse for unknown reasons (memory limit?)
-            chunk_h = img.dims.x    #  * bit_depth / 8
+            chunk_h = img.dims.x  # * bit_depth / 8
             if chunk_h < 4000:
                 chunk_v = 32
             elif chunk_h < 8000:
@@ -243,7 +253,7 @@ class LifClass(LifFile):
                     # If we have both blue and cyan, then merge it into green and blue channels.
                     # Note: we have to temporarily promote datatype to 32-bit, or else numbers will overflow,
                     # and then demote back to original datatype.
-                    img_cyan = img_cyan.astype(np.uint32) >> 1   # divide by two
+                    img_cyan = img_cyan.astype(np.uint32) >> 1  # divide by two
                     img_green = img_green.astype(np.uint32) + img_cyan
                     img_blue = img_blue.astype(np.uint32) + img_cyan
 
@@ -267,14 +277,18 @@ class LifClass(LifFile):
 
         # imwrite requires BGR order, backwards from usual RGB
         merged = np.dstack((img_blue, img_green, img_red))
-        self.write_jpg(merged, img.name, "_RGB", bit_depth)
+
+        if convert_format == self.Format.jpg:
+            self.write_jpg(merged, img.name, "_RGB", bit_depth)
+        elif convert_format == self.Format.tiff:
+            self.write_tiff(merged, img.name, "_RGB", bit_depth)
 
         return 1
 
     def write_jpg(self, merged, img_name, suffix, source_bit_depth):
 
         # Make sure img_name doesn't have any slashes, as that will mess up filename saving
-        # Replace any slahes with dashes.
+        # Replace any slashes with dashes.
         img_name = img_name.replace('/', '-')
         img_name = img_name.replace('\\', '-')
         # Split path into root and extension
@@ -301,8 +315,23 @@ class LifClass(LifFile):
                 merged[row:row + chunk_v, ] = one_row.astype(np.uint16)
                 row += chunk_v
 
-#            merged = merged / 256
         cv2.imwrite(new_path, merged, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        end = time.time()
+        print(f'    Completed in {end - start} seconds.')
+
+    def write_tiff(self, merged, img_name, suffix, source_bit_depth):
+
+        # Make sure img_name doesn't have any slashes, as that will mess up filename saving
+        # Replace any slashes with dashes.
+        img_name = img_name.replace('/', '-')
+        img_name = img_name.replace('\\', '-')
+        # Split path into root and extension
+        paths = os.path.splitext(self.file_path)
+        new_path = paths[0] + "_" + img_name + suffix + ".tiff"
+        print('    Writing RGB merged file: "' + os.path.basename(new_path) + '"')
+        start = time.time()
+
+        cv2.imwrite(new_path, merged)
         end = time.time()
         print(f'    Completed in {end - start} seconds.')
 
