@@ -92,6 +92,9 @@ class LifClass(LifFile):
             with open(xml_path, 'w') as f:
                 f.write(self.xml_header)
 
+        if self.conversion_options.convert_format == self.Options.Format.none:
+            return 0, 0
+
         if n < 0:
             # Convert all images in file
             print(f'  Found {len(img_list)} images in file "{self.file_base_name}".')
@@ -326,6 +329,8 @@ class LifClass(LifFile):
             ext = ".jpg"
         elif self.conversion_options.convert_format == self.Options.Format.tiff:
             ext = ".tiff"
+        elif self.conversion_options.convert_format == self.Options.Format.none:
+            return ""
         else:
             raise f"Unknown format {self.conversion_options.convert_format}"
 
