@@ -15,7 +15,7 @@ conversion_options = LifClass.Options()
 
 print('\nSelect format to convert to:')
 print('1. JPG (90% quality, much smaller files, highly recommended, DEFAULT)')
-print('2. TIFF (larger files, but compression is lossless. Only use if higher quality is absolutely necessary. Not tested for files >4GB')
+print('2. TIFF (larger files, but compression is lossless. Only use if higher quality is absolutely necessary. Not tested for BigTIFF files >4GB')
 answer = input('Make selection (default = 1): ')
 if answer == '' or answer == '1':
     conversion_options.convert_format = LifClass.Options.Format.jpg
