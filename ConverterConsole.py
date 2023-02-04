@@ -15,7 +15,7 @@ conversion_options = LifClass.Options()
 
 print('\nSelect format to convert to:')
 print('1. JPG (90% quality, much smaller files, highly recommended, DEFAULT)')
-print('2. TIFF (larger files, but compression is lossless. Only use if higher quality is absolutely necessary. Not tested for BigTIFF files >4GB')
+print('2. TIFF (larger files, but compression is lossless. Only use if higher quality is absolutely necessary. Not tested for BigTIFF >4GB files')
 answer = input('Make selection (default = 1): ')
 if answer == '' or answer == '1':
     conversion_options.convert_format = LifClass.Options.Format.jpg
@@ -37,7 +37,7 @@ conversion_options.write_xml_metadata = (answer == 'y')
 if answer_source == '1':
     root = tk.Tk()  # pointing root to Tk() to use it as Tk() in program.
     root.withdraw()  # Hides small tkinter window.
-    root.attributes('-topmost', True)  # Opened windows will be active. above all windows despite of selection.
+    root.attributes('-topmost', True)  # Opened windows will be active above all windows in spite of selection.
     folder_path = filedialog.askdirectory()
 
     if folder_path != '':

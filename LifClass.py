@@ -25,6 +25,10 @@ class LifClass(LifFile):
 
     conversion_options = Options()
 
+    class UserCanceled(Exception):
+        pass
+
+
     def __init__(self, file_path:str = "", conversion_options: Options = None):
 
         if file_path == "":
@@ -36,9 +40,9 @@ class LifClass(LifFile):
             file_path = filedialog.askopenfilename(filetypes=[("LIF files", "*.lif")])
 
             if file_path == "":
-                raise 'No file selected, will quit\n'
+                raise self.UserCanceled
 
-        self.file_name = os.path.basename(file_path)
+        self.file_base_name = os.path.basename(file_path)
         self.file_path = file_path
         if conversion_options is not None:
             self.conversion_options = conversion_options
@@ -52,7 +56,7 @@ class LifClass(LifFile):
     def prompt_select_image(self):
 
         img_list = [i for i in self.get_iter_image()]
-        print(f'\nChoose image to convert within file "{self.file_name}":')
+        print(f'\nChoose image to convert within file "{self.file_base_name}":')
         for n in range(len(img_list)):
             print(f'{n}: "{img_list[n].name}", width {img_list[n].dims.x} x height {img_list[n].dims.y}')
         answer = input('Select image (default = 0): ')
@@ -90,8 +94,10 @@ class LifClass(LifFile):
 
         if n < 0:
             # Convert all images in file
-            print(f'  Found {len(img_list)} images in file "{self.file_name}".')
+            print(f'  Found {len(img_list)} images in file "{self.file_base_name}".')
+            img_num = 1
             for n in range(len(img_list)):
+                print(f'    {img_num}: ', end="")
                 num_images_completed += self.convert_image(img_list[n], xml_metadata[n])
             num_files_completed += 1
         else:
@@ -106,14 +112,14 @@ class LifClass(LifFile):
     def convert_image(self, img, xml_metadata):
 
         if img.dims.m > 1:
-            print(f'    Found {img.dims.m} unmerged tiles. Skipping.')
+            print(f'Image consists of {img.dims.m} unmerged tiles. Skipping.')
             # This is a set of unmerged tiles. Just skip
             return 0
 
         f_path = self.generate_filepath(img.name)
 
         if Path(f_path).is_file() and not self.conversion_options.overwrite_existing:
-            print(f'    Image already converted. SKIPPING')  # "{os.path.basename(f_path)}"')
+            print(f'Image already converted. SKIPPING')  # "{os.path.basename(f_path)}"')
             return 0
 
         print(f'  Processing image {img.name}')
@@ -151,7 +157,7 @@ class LifClass(LifFile):
         img_cyan = None
         img_magenta = None
 
-        print(f'    Image size is: width {img.dims.x} x height {img.dims.y}')
+        print(f'Image size is: width {img.dims.x} x height {img.dims.y}')
         print(f'    Found {n_chan} color channels, bit depth is {bit_depth}')
 
         d = None
@@ -321,7 +327,7 @@ class LifClass(LifFile):
         elif self.conversion_options.convert_format == self.Options.Format.tiff:
             ext = ".tiff"
         else:
-            raise "Unknown format " + self.conversion_options.convert_format
+            raise f"Unknown format {self.conversion_options.convert_format}"
 
         return paths[0] + "_" + img_name + suffix + ext
 
