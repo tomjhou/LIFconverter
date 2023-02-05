@@ -5,9 +5,17 @@ Install auto-py-to-exe using the following:
 
 pip install auto-py-to-exe
 
-You then have to find the .exe file which will be in the Scripts folder of the python installation. For example, it might be in:
+You must install it in the SAME python environment that you will eventually run it in, e.g. don't install under
+anaconda if you intend to run from Windows command prompt.
+
+You then have to find the .exe file which will be in the Scripts folder of the python installation. For example,
+if installed under anaconda, it might be in:
 
 C:/Users/TomJhou/anaconda3/Scripts/auto-py-to-exe.exe
+
+or
+
+C:/Users/TomJhou/AppData/Local/Packages/PythonSoftwareFoundation_Python3.8_qbz5n2.../LocalCache/local-packages/Python38/Scripts
 
 Add that folder to the Windows path if you want to run from command line. Or add a shortcut to taskbar and run from there.
 
