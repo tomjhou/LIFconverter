@@ -132,6 +132,8 @@ class gui(basic_gui):
     def start_convert_file(self):
 
         self.get_options_from_gui()
+        # If converting just one file, then always overwrite
+        self.conversion_options.overwrite_existing = True
         try:
             self.lif_object = LifClass(conversion_options=self.conversion_options, root_window=self.root)
             self.status_label_list[0].config(text=self.lif_object.file_base_name)
@@ -182,12 +184,15 @@ class gui(basic_gui):
         frame1b.pack(side=tk.TOP, fill=tk.X, padx=2, pady=2)
 
         # Dictionary to create multiple buttons
-        values = {"Convert data folder": self.start_convert_folder,
-                  "Convert single .LIF file": self.start_convert_file,
+        values = {"Convert all .lif files in folder": self.start_convert_folder,
+                  "Convert single .lif file": self.start_convert_file,
                   "Stop conversion": self.do_stop_conversion,
                   "Exit": self.do_exit}
 
-        self.button_list = self.add_boxed_button_column(frame1b, values)
+        self.button_list = self.add_boxed_button_column(frame1b, values, side=tk.LEFT, fill=tk.X)
+
+        ttk.Checkbutton(frame1b, text="Include sub-folders?", variable=self.var_recursive).\
+            pack(side=tk.TOP, anchor=tk.NW, padx=20, pady=10)
 
         # Dictionary to create multiple radio buttons
         values = {"JPG (smallest files, recommended)": LifClass.Options.Format.jpg,
@@ -195,27 +200,29 @@ class gui(basic_gui):
                   "None (use if only extracting XML header)": LifClass.Options.Format.none}
 
         self.add_boxed_radio_button_column(frame1b, values, backing_var=self.format_string_var,
+                                           side=tk.TOP, fill=tk.X,
+                                           padx=15, pady=5,
                                            command=self.do_update_enabled_status_from_gui,
                                            text="Conversion format")
 
         # Dictionary to create multiple buttons
-        values = {"Convert new files only (recommended)": "skip",
-                  "Convert all files (will overwrites existing files)": "all"}
+        values = {"Smart conversion (recommended) - skips files converted earlier": "skip",
+                  "Convert all files (overwrites previously converted files)": "all"}
 
-        self.add_boxed_radio_button_column(frame1b, values, backing_var=self.skip_string_var)
+        self.add_boxed_radio_button_column(frame1b, values, backing_var=self.skip_string_var,
+                                           side=tk.TOP, fill=tk.X,
+                                           padx=15, pady=5)
 
         frame1a = tk.Frame(frame1, borderwidth=5)
         frame1a.pack(side=tk.BOTTOM, fill=tk.X, padx=15, pady=5)
 
-        ttk.Checkbutton(frame1a, text="Recursive? (Scans sub-folders also)", variable=self.var_recursive).\
-            pack(side=tk.TOP, anchor=tk.NW)
         ttk.Checkbutton(frame1a, text="Write metadata to .xml file (if you don't know what this is, you don't need it)",
                         variable=self.var_write_xml_metadata,
                         command=self.do_update_enabled_status_from_gui).\
             pack(side=tk.TOP, anchor=tk.NW)
 
         values = ["Current file:",
-                  "Current image:"]
+                  "Status:"]
 
         self.status_label_list = self.add_status_text_lines(self.root, values)
 

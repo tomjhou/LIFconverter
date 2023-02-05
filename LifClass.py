@@ -30,6 +30,7 @@ class LifClass(LifFile):
 
     conversion_options = Options()
     lif_modified_time = None
+    root_window = None
 
     class UserCanceled(Exception):
         # Custom exception class, no code needed.

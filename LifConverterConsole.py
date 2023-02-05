@@ -24,12 +24,15 @@ elif answer == '2':
 else:
     conversion_options.convert_format = LifClass.Options.Format.jpg
 
-print('\nOverwrite files that already exist?')
-print('y. Use this if files have changed')
-print('n. This saves time by skipping files that were already converte earlier (DEFAULT)')
-answer = input('Make selection (default = n): ')
-conversion_options.overwrite_existing = (answer == 'y')
-
+if answer_source == 1:
+    print('\nOverwrite files that already exist?')
+    print('y. Use this if files have changed')
+    print('n. This saves time by skipping files that were already converte earlier (DEFAULT)')
+    answer = input('Make selection (default = n): ')
+    conversion_options.overwrite_existing = (answer == 'y')
+else:
+    # If converting just one file, then always overwrite
+    conversion_options.overwrite_existing = True
 
 answer = input('\nWrite each LIF file\'s metadata to XML file? (y/n, default = n):')
 conversion_options.write_xml_metadata = (answer == 'y')

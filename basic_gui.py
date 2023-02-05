@@ -54,7 +54,10 @@ class basic_gui:
 
         self.root.update()
 
-    def add_boxed_radio_button_column(self, parent_frame, button_names, backing_var, command=None, text=""):
+    def add_boxed_radio_button_column(self, parent_frame, button_names={},
+                                      backing_var=None, command=None,
+                                      side=None, fill=None,
+                                      padx=0, pady=0, text=""):
 
         useLabelFrame = True
 
@@ -65,7 +68,7 @@ class basic_gui:
             frame = tk.Frame(parent_frame, highlightbackground="black",
                              highlightthickness=1, relief="flat", borderwidth=5)
 
-        frame.pack(side=tk.TOP, fill=tk.X, padx=15, pady=5)
+        frame.pack(side=side, fill=fill, padx=padx, pady=pady)
 
         self.add_radio_button_column(frame, button_names, backing_var, command)
 
@@ -79,13 +82,13 @@ class basic_gui:
             tk.Radiobutton(parent_frame, text=text, variable=backing_var, value=value, command=command).\
                 pack(side=tk.TOP, anchor='w', ipady=5)
 
-    def add_boxed_button_column(self, parent_frame, button_names):
+    def add_boxed_button_column(self, parent_frame, button_names, side=None, fill=None):
 
         frame = tk.Frame(parent_frame, highlightbackground="black", highlightthickness=1, relief="flat", borderwidth=5)
-        frame.pack(side=tk.LEFT, fill=tk.BOTH, padx=2, pady=2)
+        frame.pack(side=side, fill=fill, padx=2, pady=2)
 
         frame_inset = tk.Frame(frame)  #, highlightbackground="black", highlightthickness=1)
-        frame_inset.pack(anchor=tk.CENTER, pady=20)
+        frame_inset.pack(anchor=tk.CENTER, pady=10)
         return self.add_button_column(frame_inset, button_names)
 
     def add_button_column(self, parent_frame, button_names):
