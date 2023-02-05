@@ -1,10 +1,25 @@
 import tkinter as tk
+import enum
 from tkinter import ttk, filedialog
 from functools import partial
 
 
 PADDING_PIXELS = 5  # How much padding to put around GUI buttons
 USE_TWO_BUTTON_COLUMNS = True  # If true, buttons are in 2 columns, otherwise will be in 1 column
+
+
+class basic_flag:
+
+    def __init__(self):
+        self.flag = False
+
+    def set(self):
+        self.flag = True
+
+    def check(self):
+        x = self.flag
+        self.flag = False
+        return x
 
 
 class basic_gui:
@@ -22,14 +37,15 @@ class basic_gui:
 
         self.root.quit()
 
-    def set_enabled_status(self, enabled, exclude_last=True):
+    def set_enabled_status(self, enabled, exclude_last=2):
         if enabled:
             s = "enabled"
         else:
             s = "disabled"
 
         if exclude_last:
-            bl = self.button_list[:-1]
+            # Exclude last n buttons, where n is specified in arguments
+            bl = self.button_list[:-exclude_last]
         else:
             bl = self.button_list
 
@@ -57,6 +73,9 @@ class basic_gui:
     def add_radio_button_column(parent_frame, button_names, backing_var, command=None):
 
         for (text, value) in button_names.items():
+            if isinstance(value, enum.Enum):
+                # If enumerated type, then convert to string
+                value = value.name
             tk.Radiobutton(parent_frame, text=text, variable=backing_var, value=value, command=command).\
                 pack(side=tk.TOP, anchor='w', ipady=5)
 
@@ -64,7 +83,10 @@ class basic_gui:
 
         frame = tk.Frame(parent_frame, highlightbackground="black", highlightthickness=1, relief="flat", borderwidth=5)
         frame.pack(side=tk.LEFT, fill=tk.BOTH, padx=2, pady=2)
-        return self.add_button_column(frame, button_names)
+
+        frame_inset = tk.Frame(frame)  #, highlightbackground="black", highlightthickness=1)
+        frame_inset.pack(anchor=tk.CENTER, pady=20)
+        return self.add_button_column(frame_inset, button_names)
 
     def add_button_column(self, parent_frame, button_names):
 

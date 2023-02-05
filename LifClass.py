@@ -1,4 +1,4 @@
-from readlif.reader import LifFile    # install with pip install readlif
+from reader import LifFile    # install with pip install readlif
 import tkinter as tk
 from tkinter import filedialog
 import numpy as np
@@ -7,6 +7,7 @@ import cv2                            # install with pip install opencv-python
 import os
 import enum
 from pathlib import Path
+from basic_gui import basic_flag
 
 
 class LifClass(LifFile):
@@ -23,19 +24,29 @@ class LifClass(LifFile):
         def __init__(self):
             self.convert_format = self.Format.none
 
+    num_images_converted = 0
+    num_images_skipped = 0
+    num_images_error = 0
+
     conversion_options = Options()
+    lif_modified_time = None
 
     class UserCanceled(Exception):
+        # Custom exception class, no code needed.
         pass
 
+    def __init__(self, file_path:str = "", conversion_options: Options = None, root_window=None):
 
-    def __init__(self, file_path:str = "", conversion_options: Options = None):
+        self.stopFlag = basic_flag()  # Used to stop ongoing conversion
+        if root_window is not None:
+            self.root_window = root_window
 
         if file_path == "":
 
-            root = tk.Tk()
-            root.withdraw()
-            root.attributes('-topmost', True)  # Opened windows will be active. above all windows despite selection.
+            if self.root_window is None:
+                self.root_window = tk.Tk()
+                self.root_window.withdraw()
+                self.root_window.attributes('-topmost', True)  # Opened windows will be active. above all windows despite selection.
 
             file_path = filedialog.askopenfilename(filetypes=[("LIF files", "*.lif")])
 
@@ -44,6 +55,9 @@ class LifClass(LifFile):
 
         self.file_base_name = os.path.basename(file_path)
         self.file_path = file_path
+
+        self.lif_modified_time = os.path.getmtime(file_path)
+
         if conversion_options is not None:
             self.conversion_options = conversion_options
 
@@ -52,6 +66,7 @@ class LifClass(LifFile):
         except Exception as e:
             print(f'  Error encountered while opening LIF file: {e}')
             print('  Please check whether file is corrupted.')
+            self.num_images_error += 1
 
     def prompt_select_image(self):
 
@@ -65,11 +80,11 @@ class LifClass(LifFile):
 
         return int(answer)
 
+    def stop_conversion(self):
+        self.stopFlag.set()
+
     # Convert one or more images in a single file
     def convert(self, n:int = -1):
-
-        num_files_completed = 0
-        num_images_completed = 0
 
         # Access a specific image directly
         # img_0 = new.get_image(0)
@@ -79,7 +94,8 @@ class LifClass(LifFile):
         except Exception as e:
             print(f'\n  Error while reading image list: {e}')
             print('  Unable to convert file, possibly due to file corruption or truncation. Will skip')
-            return 0, 0
+            self.num_images_error += 1
+            return
 
         xml_metadata = self._recursive_metadata_find(
             self.xml_root, )  # self.xml_root.findall("./Element/Children/Element/Data/Image")
@@ -93,39 +109,43 @@ class LifClass(LifFile):
                 f.write(self.xml_header)
 
         if self.conversion_options.convert_format == self.Options.Format.none:
-            return 0, 0
+            return
 
         if n < 0:
             # Convert all images in file
-            print(f'  Found {len(img_list)} images in file "{self.file_base_name}".')
-            img_num = 1
+            print(f'  Found {len(img_list)} image(s) in file "{self.file_base_name}".')
             for n in range(len(img_list)):
-                print(f'    {img_num}: ', end="")
-                num_images_completed += self.convert_image(img_list[n], xml_metadata[n])
-            num_files_completed += 1
+                if self.stopFlag.check():
+                    raise self.UserCanceled
+                print(f'    {n + 1}: ', end="")
+                self.convert_image(img_list[n], xml_metadata[n])
         else:
             # Convert single image
-            if self.convert_image(img_list[n], xml_metadata[n]) > 0:
-                num_files_completed += 1
-                num_images_completed += 1
+            self.convert_image(img_list[n], xml_metadata[n])
 
-        return num_files_completed, num_images_completed
+        return
 
     # Convert a single image within this file.
     def convert_image(self, img, xml_metadata):
 
         if img.dims.m > 1:
-            print(f'Image consists of {img.dims.m} unmerged tiles. Skipping.')
+            print(f'SKIPPING image which consists of {img.dims.m} unmerged tiles: "{img.name}"')
             # This is a set of unmerged tiles. Just skip
-            return 0
+            self.num_images_skipped += 1
+            return
 
         f_path = self.generate_filepath(img.name)
 
         if Path(f_path).is_file() and not self.conversion_options.overwrite_existing:
-            print(f'Image already converted. SKIPPING')  # "{os.path.basename(f_path)}"')
-            return 0
+            # File already exists. Now check timestamp
+            ts = os.path.getmtime(f_path)
 
-        print(f'  Processing image {img.name}')
+            if ts > self.lif_modified_time:
+                print(f'SKIPPING image already converted: "{img.name}"')  # "{os.path.basename(f_path)}"')
+                self.num_images_skipped += 1
+                return
+
+        print(f'Processing image: "{img.name}"')
 
         # Determine whether this is a z-stack
         z_depth = img.dims.z
@@ -167,6 +187,11 @@ class LifClass(LifFile):
 
         for m in range(n_chan):
 
+            if self.root_window is not None:
+                self.root_window.update()
+                if self.stopFlag.check():
+                    raise self.UserCanceled
+
             color = xml_chans[m].attrib["LUTName"]
             print(f'      Generating image for channel {color}: ')
             if (n_chan - m) <= len(xml_scales):
@@ -190,6 +215,11 @@ class LifClass(LifFile):
                 ar = None
 
                 for k in range(z_depth):
+                    # Keep GUI responsive and check for user interruption
+                    if self.root_window is not None:
+                        self.root_window.update()
+                    if self.stopFlag.check():
+                        raise self.UserCanceled
                     print('.', end="")
                     f = img.get_frame(z=k, t=0, c=m)
                     if k == 0:
@@ -259,6 +289,9 @@ class LifClass(LifFile):
             elif color == "Magenta":
                 img_magenta = ar
 
+        if self.stopFlag.check():
+            raise self.UserCanceled
+
         if img_magenta is not None:
             if img_red is None and img_blue is None:
                 img_red = img_magenta
@@ -305,6 +338,9 @@ class LifClass(LifFile):
                 # There is neither a blue nor cyan channel. Use zeros
                 img_blue = np.zeros(d, dtype=pixel_type_string)
 
+        if self.stopFlag.check():
+            raise self.UserCanceled
+
         # imwrite requires BGR order, backwards from usual RGB
         merged = np.dstack((img_blue, img_green, img_red))
 
@@ -313,7 +349,8 @@ class LifClass(LifFile):
         elif self.conversion_options.convert_format == self.Options.Format.tiff:
             self.write_tiff(merged, img.name)
 
-        return 1
+        self.num_images_converted += 1
+        return
 
     def generate_filepath(self, img_name):
 
