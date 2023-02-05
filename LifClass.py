@@ -38,7 +38,6 @@ class LifClass(LifFile):
 
     def __init__(self, file_path:str = "", conversion_options: Options = None, root_window=None):
 
-        self.stopFlag = basic_flag()  # Used to stop ongoing conversion
         if root_window is not None:
             self.root_window = root_window
 
@@ -54,6 +53,7 @@ class LifClass(LifFile):
             if file_path == "":
                 raise self.UserCanceled
 
+        self.stopFlag = basic_flag(self.root_window)  # Used to stop ongoing conversion
         self.file_base_name = os.path.basename(file_path)
         self.file_path = file_path
 
@@ -118,7 +118,7 @@ class LifClass(LifFile):
             for n in range(len(img_list)):
                 if self.stopFlag.check():
                     raise self.UserCanceled
-                print(f'    {n + 1}: ', end="")
+                print(f'   {n + 1}: ', end="")
                 self.convert_image(img_list[n], xml_metadata[n])
         else:
             # Convert single image
@@ -181,17 +181,15 @@ class LifClass(LifFile):
         img_cyan = None
         img_magenta = None
 
-        print(f'Image size is: width {img.dims.x} x height {img.dims.y}')
+        print(f'    Image size is: width {img.dims.x} x height {img.dims.y}')
         print(f'    Found {n_chan} color channels, bit depth is {bit_depth}')
 
         d = None
 
         for m in range(n_chan):
 
-            if self.root_window is not None:
-                self.root_window.update()
-                if self.stopFlag.check():
-                    raise self.UserCanceled
+            if self.stopFlag.check():
+                raise self.UserCanceled
 
             color = xml_chans[m].attrib["LUTName"]
             print(f'      Generating image for channel {color}: ')
@@ -217,8 +215,6 @@ class LifClass(LifFile):
 
                 for k in range(z_depth):
                     # Keep GUI responsive and check for user interruption
-                    if self.root_window is not None:
-                        self.root_window.update()
                     if self.stopFlag.check():
                         raise self.UserCanceled
                     print('.', end="")

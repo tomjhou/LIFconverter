@@ -2,6 +2,9 @@ from LifClass import LifClass
 import tkinter as tk
 from tkinter import ttk, filedialog
 import os
+import threading
+import ctypes
+import time
 
 from basic_gui import basic_gui, basic_flag
 
@@ -16,9 +19,9 @@ class gui(basic_gui):
     stopFlag = basic_flag()
     lif_object: LifClass = None
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
 
-        super().__init__()
+        super().__init__(*args, **kwargs)
         self.var_recursive = tk.BooleanVar(self.root)
         self.skip_string_var = tk.StringVar(self.root, "skip")
         self.var_write_xml_metadata = tk.BooleanVar(self.root)
@@ -39,12 +42,6 @@ class gui(basic_gui):
     def do_update_enabled_status_from_gui(self):
         enabled = (self.format_string_var.get() != "none") or (self.var_write_xml_metadata.get())
         self.set_enabled_status(enabled)
-
-    def do_stop_conversion(self):
-        print('User requested cancellation')
-        self.stopFlag.set()
-        if self.lif_object is not None:
-            self.lif_object.stopFlag.set()
 
     def get_options_from_gui(self):
 
@@ -159,6 +156,12 @@ class gui(basic_gui):
         else:
             print(f'\nConverted {self.lif_object.num_images_converted} images')
 
+    def operation_end(self):
+        # Re-enable the "stop conversion" button
+        self.set_widget_state(self.button_list[-2], True)
+        # Re-enable remaining buttons
+        super().operation_end()
+
     def run_gui(self):
 
         #
@@ -184,10 +187,8 @@ class gui(basic_gui):
         frame1b.pack(side=tk.TOP, fill=tk.X, padx=2, pady=2)
 
         # Dictionary to create multiple buttons
-        values = {"Convert all .lif files in folder": self.start_convert_folder,
-                  "Convert single .lif file": self.start_convert_file,
-                  "Stop conversion": self.do_stop_conversion,
-                  "Exit": self.do_exit}
+        values = {"Convert all .lif files in folder(s)": self.start_convert_folder,
+                  "Convert single .lif file": self.start_convert_file}
 
         self.button_list = self.add_boxed_button_column(frame1b, values, side=tk.LEFT, fill=tk.X)
 
@@ -206,7 +207,7 @@ class gui(basic_gui):
                                            text="Conversion format")
 
         # Dictionary to create multiple buttons
-        values = {"Smart conversion (recommended) - skips files converted earlier": "skip",
+        values = {"Skip files converted earlier (recommended)": "skip",
                   "Convert all files (overwrites previously converted files)": "all"}
 
         self.add_boxed_radio_button_column(frame1b, values, backing_var=self.skip_string_var,
@@ -235,7 +236,7 @@ class gui(basic_gui):
 
         self.root.minsize(self.root.winfo_width(), self.root.winfo_height())
 
-        tk.mainloop()
+        super().run_gui()
 
         print("Finished")
 
