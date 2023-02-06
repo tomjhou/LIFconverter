@@ -125,7 +125,7 @@ class LifClass:
             with open(xml_path, 'w') as f:
                 f.write(self.lif_file_object.xml_header)
 
-            print(f'  Wrote file {os.path.basename(xml_path)}')
+            print(f'  Wrote XML file "{os.path.basename(xml_path)}"')
             self.num_xml_written += 1
             return
 
