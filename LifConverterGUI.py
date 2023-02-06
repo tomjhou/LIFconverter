@@ -1,20 +1,20 @@
 import os
 import tkinter as tk
 from tkinter import ttk, filedialog
+from functools import partial
 
 from LifClass import LifClass
 from basic_gui import basic_gui, basic_flag
-
 
 PADDING_PIXELS = 5  # How much padding to put around GUI buttons
 USE_TWO_BUTTON_COLUMNS = True  # If true, buttons are in 2 columns, otherwise will be in 1 column
 
 
 class gui(basic_gui):
-
     root = None
     stopFlag = basic_flag()
     lif_object: LifClass = None
+    output_folder = None
 
     def __init__(self):
 
@@ -27,15 +27,10 @@ class gui(basic_gui):
         self.conversion_options = LifClass.Options()
         self.file_path = None
 
-    def do_open_folder(self):
+    def do_open_output_folder(self):
 
-        self.file_path = filedialog.askdirectory()
-        self.status_label_list[0].config(text=self.file_path)
-
-    def do_open_file(self):
-
-        self.file_path = filedialog.askopenfilename()
-        self.status_label_list[0].config(text=self.file_path)
+        if self.output_folder is not None:
+            os.startfile(self.output_folder)
 
     def do_update_enabled_status_from_gui(self):
         enabled = (self.format_string_var.get() != "none") or (self.var_write_xml_metadata.get())
@@ -85,8 +80,10 @@ class gui(basic_gui):
 
         if folder_path == '':
             print('\nNo folder chosen.\n')
-            self.status_label_list[0].config(text="No folder chosen")
+            self.set_status_text(0, "No folder chosen")
             return
+
+        self.output_folder = folder_path
 
         file_list = self.get_file_list(folder_path)
 
@@ -96,6 +93,7 @@ class gui(basic_gui):
         num_images_done = 0
         num_images_skipped = 0
         num_images_error = 0
+        num_xml = 0
 
         num_files = len(file_list)
 
@@ -107,7 +105,7 @@ class gui(basic_gui):
 
                 f = file_list[x]
                 print(f'\nProcessing file "{f.name}"')
-                self.set_status_text(0, f'({x + 1}/{num_files}) {f.name}')
+                self.set_status_text(0, f'({x + 1} of {num_files}) {f.name}')
                 self.set_status_text(1, ("Folder:", os.path.dirname(f.path)))
 
                 self.root.update()
@@ -117,28 +115,33 @@ class gui(basic_gui):
                 num_images_done += self.lif_object.num_images_converted
                 num_images_skipped += self.lif_object.num_images_skipped
                 num_images_error += self.lif_object.num_images_error
+                num_xml += self.lif_object.num_xml_written
         except LifClass.UserCanceled:
             # Add any final images converted before cancellation
             if self.lif_object is not None:
                 num_images_done += self.lif_object.num_images_converted
                 num_images_skipped += self.lif_object.num_images_skipped
                 num_images_error += self.lif_object.num_images_error
+                num_xml += self.lif_object.num_xml_written
         except Exception as e:
             print('Unexpected exception ' + str(e))
 
         print(f'\nConverted {num_images_done} images in {num_files_done} LIF files. ', end='')
+        if num_xml > 0:
+            print(f'Wrote {num_xml} XML files. ', end='')
         print(f'Skipped {num_images_skipped} images, encountered errors in {num_images_error} images/files\n')
 
     def start_convert_file(self):
 
         file_path = filedialog.askopenfilename(filetypes=[("LIF files", "*.lif")])
         if file_path == "":
-            self.status_label_list[0].config(text="User canceled")
+            self.set_status_text(0, "User canceled")
             return
 
         base_name = os.path.basename(file_path)
+        self.output_folder = os.path.dirname(file_path)
         print(f'\nProcessing file "{base_name}"')
-        self.status_label_list[0].config(text=base_name)
+        self.set_status_text(0, base_name)
         # Update GUI now because opening/converting lif file might take a long time
         self.root.update()
 
@@ -149,22 +152,25 @@ class gui(basic_gui):
             self.lif_object = LifClass(file_path, conversion_options=self.conversion_options, root_window=self.root)
             self.lif_object.convert()
         except LifClass.UserCanceled:
-            self.status_label_list[0].config(text="User canceled")
+            self.set_status_text(0, "User canceled")
         else:
-            print(f'\nConverted {self.lif_object.num_images_converted} images in file. ', end='')
-            print(f'Skipped {self.lif_object.num_images_skipped} images, encountered errors in {self.lif_object.num_images_error} images/files\n')
+            print(f'\nConverted {self.lif_object.num_images_converted} images. ', end='')
+            if self.lif_object.num_xml_written > 0:
+                print(f'Wrote {self.lif_object.num_xml_written} XML files. ', end='')
+            print(
+                f'Skipped {self.lif_object.num_images_skipped} images, encountered errors in {self.lif_object.num_images_error} images/files\n')
 
     def start_convert_image(self):
 
         self.get_options_from_gui()
         try:
             self.lif_object = LifClass(conversion_options=self.conversion_options, root_window=self.root)
-            self.status_label_list[0].config(text=self.lif_object.file_base_name)
+            self.set_status_text(0, self.lif_object.file_base_name)
             self.root.update()
             n = self.lif_object.prompt_select_image()
             self.lif_object.convert(n)
         except LifClass.UserCanceled:
-            self.status_label_list[0].config(text="User canceled")
+            self.set_status_text(0, text="User canceled")
         else:
             print(f'\nConverted {self.lif_object.num_images_converted} images')
 
@@ -199,48 +205,52 @@ class gui(basic_gui):
         frame1b.pack(side=tk.TOP, fill=tk.X, padx=2, pady=2)
 
         # Dictionary to create multiple buttons
-        values = {"Convert all LIF files in folder(s)": self.start_convert_folder,
-                  "Convert single LIF file": self.start_convert_file}
+        values = {"Convert single LIF file": self.start_convert_file,
+                  "Convert folder": self.start_convert_folder,}
 
         self.button_list = self.add_boxed_button_column(frame1b, values, side=tk.LEFT, fill=tk.X)
 
-        ttk.Checkbutton(frame1b, text="Include sub-folders?", variable=self.var_recursive).\
-            pack(side=tk.TOP, anchor=tk.NW, padx=20, pady=4)
+        # Radio buttons for output options
+        values = {"JPG (smallest files, highly recommended)": LifClass.Options.Format.jpg,
+                  "TIFF": LifClass.Options.Format.tiff,
+                  "None (use if extracting XML header)": LifClass.Options.Format.none}
 
-        ttk.Checkbutton(frame1b, text="Rotate images 180 degrees?", variable=self.var_rotate180).\
-            pack(side=tk.TOP, anchor=tk.NW, padx=20, pady=4)
+        (f, elt) = self.add_boxed_radio_button_column(frame1b, values, backing_var=self.format_string_var,
+                                                      side=tk.TOP, fill=tk.X,
+                                                      padx=15, pady=8,
+                                                      command=self.do_update_enabled_status_from_gui,
+                                                      text="Output options")
 
-        # Dictionary to create multiple radio buttons
-        values = {"JPG (smallest files, recommended)": LifClass.Options.Format.jpg,
-                  "TIFF (slightly higher quality, but much bigger files)": LifClass.Options.Format.tiff,
-                  "None (use if just extracting XML header)": LifClass.Options.Format.none}
+        cb = ttk.Checkbutton(f, text="Rotate 180 degrees?", variable=self.var_rotate180)
+        cb.pack(before=elt, side=tk.TOP, anchor=tk.NW, padx=10, pady=(6, 3))
 
-        self.add_boxed_radio_button_column(frame1b, values, backing_var=self.format_string_var,
-                                           side=tk.TOP, fill=tk.X,
-                                           padx=15, pady=5,
-                                           command=self.do_update_enabled_status_from_gui,
-                                           text="Conversion format")
+        # Radio buttons for folder options
+        values = {"Skip already converted files (recommended)": "skip",
+                  "Convert all (overwrites old output)": "all"}
 
-        # Dictionary to create multiple buttons
-        values = {"Skip files converted earlier (recommended)": "skip",
-                  "Convert all files (overwrites previously converted files)": "all"}
+        (f, elt) = self.add_boxed_radio_button_column(frame1b, values, backing_var=self.skip_string_var,
+                                                      side=tk.TOP, fill=tk.X,
+                                                      padx=15, pady=8,
+                                                      text="Folder convert options")
 
-        self.add_boxed_radio_button_column(frame1b, values, backing_var=self.skip_string_var,
-                                           side=tk.TOP, fill=tk.X,
-                                           padx=15, pady=5)
+        cb = ttk.Checkbutton(f, text="Include sub-folders?", variable=self.var_recursive)
+        cb.pack(before=elt, side=tk.TOP, anchor=tk.NW, padx=10, pady=(6, 3))
 
         frame1a = tk.Frame(frame1, borderwidth=5)
         frame1a.pack(side=tk.BOTTOM, fill=tk.X, padx=15, pady=5)
 
-        ttk.Checkbutton(frame1a, text="Extract header to XML file (if you don't know what this is, you don't need it)",
+        ttk.Checkbutton(frame1a, text="Extract XML header (if you don't know what this is, you probably don't need it)",
                         variable=self.var_write_xml_metadata,
-                        command=self.do_update_enabled_status_from_gui).\
+                        command=self.do_update_enabled_status_from_gui). \
             pack(side=tk.TOP, anchor=tk.NW)
 
         values = ["Current file:",
                   "Status:"]
 
         self.add_status_text_lines(self.root, values)
+
+        b = tk.Button(self.root, text="Open output folder", command=self.do_open_output_folder)
+        b.pack(side=tk.TOP, padx=15, pady=(1, 10), ipadx=20, ipady=10)
 
         # Place in top left corner of screen
         self.root.geometry("+%d+%d" % (PADDING_PIXELS, PADDING_PIXELS))

@@ -77,7 +77,8 @@ class basic_gui:
         root = tk.Tk()
         self.root = root
         self.button_list = []
-        self.status_label_list = []
+        self.label_list = []
+        self.title_list = []
 
     @staticmethod
     def set_widget_state(widget, state: bool):
@@ -99,9 +100,12 @@ class basic_gui:
             self.set_widget_state(b, enabled)
 
     def clear_status_text(self):
-        for b in self.status_label_list:
+        for b in self.label_list:
             # Column 1 is wide text line
-            self.set_widget_text(b[1], "")
+            self.set_widget_text(b, "")
+        for x in range(len(self.title_list)):
+            # Column 1 is wide text line
+            self.set_widget_text(self.title_list[x], self.default_title_list[x])
 
     def set_status_text(self, row, text):
         if type(text) is tuple:
@@ -114,32 +118,42 @@ class basic_gui:
     def add_boxed_radio_button_column(self, parent_frame, button_names=None,
                                       backing_var=None, command=None,
                                       side=None, fill=None,
-                                      padx=0, pady=0, text=""):
+                                      padx=0, pady=0, text="",
+                                      top_object=None):
 
         if button_names is None:
             button_names = {}
-        useLabelFrame = True
 
-        if useLabelFrame:
-            # Label frame is lighter and allows text label. We use it here just to match the appearance of format box
-            frame = tk.LabelFrame(parent_frame, text=text)
-        else:
-            frame = tk.Frame(parent_frame, highlightbackground="black",
-                             highlightthickness=1, relief="flat", borderwidth=5)
+        # Label frame is lighter and allows text label. We use it here just to match the appearance of format box
+        frame = tk.LabelFrame(parent_frame, text=text)
+        frame.pack(side=side, fill=fill, padx=padx, pady=pady, ipadx=5, ipady=5)
 
-        frame.pack(side=side, fill=fill, padx=padx, pady=pady)
+        elt = self.add_radio_button_column(frame, button_names, backing_var, command)
 
-        self.add_radio_button_column(frame, button_names, backing_var, command)
+#        if top_object is not None:
+#            top_object.pack(before=elt, side=tk.LEFT, anchor=tk.NW, pady=(6,6), padx=10)
+
+        return (frame, elt)
 
     @staticmethod
     def add_radio_button_column(parent_frame, button_names, backing_var, command=None):
 
+        pady = 6
+        first_elt = None
         for (text, value) in button_names.items():
             if isinstance(value, enum.Enum):
                 # If enumerated type, then convert to string
                 value = value.name
-            tk.Radiobutton(parent_frame, text=text, variable=backing_var, value=value, command=command). \
-                pack(side=tk.TOP, anchor='w', ipady=5)
+            b = tk.Radiobutton(parent_frame, text=text, variable=backing_var, value=value, command=command)
+            b.pack(side=tk.TOP, anchor='w', pady=(pady, 0), padx=10)
+
+            if first_elt is None:
+                first_elt = b
+
+            # Extra padding only on first one
+            pady = 0
+
+        return first_elt
 
     def add_boxed_button_column(self, parent_frame, button_names, side=None, fill=None):
 

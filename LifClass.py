@@ -29,6 +29,7 @@ class LifClass(LifFile):
     num_images_converted = 0
     num_images_skipped = 0
     num_images_error = 0
+    num_xml_written = 0
 
     conversion_options = Options()
     lif_modified_time = None
@@ -110,6 +111,9 @@ class LifClass(LifFile):
 
             with open(xml_path, 'w') as f:
                 f.write(self.xml_header)
+
+            print(f'  Wrote file {os.path.basename(xml_path)}')
+            self.num_xml_written += 1
 
         if self.conversion_options.convert_format == self.Options.Format.none:
             return
