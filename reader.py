@@ -1,16 +1,29 @@
-import struct
-import xml.etree.ElementTree as ET
-from PIL import Image
-from collections import namedtuple
-import warnings
-from functools import reduce
 import os
 import io
+import struct
+import warnings
+from collections import namedtuple
+from functools import reduce
+import xml.etree.ElementTree as ET
+
+from PIL import Image
 
 LIF_MAGIC = b"\x70\x00\x00\x00"
 
+
 class LifImage:
     """
+    This is a modified version of Nick Negretti's readlif version 0.6.5:
+
+    https://pypi.org/project/readlif/
+    https://github.com/nimne/readlif
+
+    I fixed a bug that would crash when reading LIF files where the end was padded
+    with zeros.
+
+
+    All comments below are from the original readlif:
+
     This should not be called directly. This should be generated while calling
     get_image or get_iter_image from a LifFile object.
 
@@ -530,21 +543,6 @@ class LifFile:
         num_images (int): Number of images
         image_list (dict): Has the keys: path, folder_name, folder_uuid,
             name, image_id, frames
-
-
-    Example:
-        >>> from readlif.reader import LifFile
-        >>> new = LifFile('./path/to/file.lif')
-
-        >>> for image in new.get_iter_image():
-        >>>     for frame in image.get_iter_t():
-        >>>         frame.image_info['name']
-        >>>         # do stuff
-
-        >>> # For non-xy imaging experiments
-        >>> img_0 = new.get_image(0)
-        >>> for i in range(0, img_0.dims_n[4]):
-        >>>     plane = img_0.get_plane(requested_dims = {4: i})
     """
 
     def _recursive_memblock_is_image(self, tree, return_list=None):

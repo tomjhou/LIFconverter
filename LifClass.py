@@ -1,13 +1,14 @@
-from reader import LifFile    # install with pip install readlif
+import os
+import time
+import enum
+from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog
 import numpy as np
-import time
 import cv2                            # install with pip install opencv-python
-import os
-import enum
-from pathlib import Path
+
 from basic_gui import basic_flag
+from reader import LifFile    # This supersedes the install with pip install readlif
 
 
 class LifClass(LifFile):
@@ -20,6 +21,7 @@ class LifClass(LifFile):
 
         write_xml_metadata = False
         overwrite_existing = True
+        rotate180 = True
 
         def __init__(self):
             self.convert_format = self.Format.none
@@ -181,8 +183,8 @@ class LifClass(LifFile):
         img_cyan = None
         img_magenta = None
 
-        print(f'    Image size is: width {img.dims.x} x height {img.dims.y}')
-        print(f'    Found {n_chan} color channels, bit depth is {bit_depth}')
+        print(f'      Image size is: width {img.dims.x} x height {img.dims.y}')
+        print(f'      Found {n_chan} color channels, bit depth is {bit_depth}')
 
         d = None
 
@@ -192,7 +194,7 @@ class LifClass(LifFile):
                 raise self.UserCanceled
 
             color = xml_chans[m].attrib["LUTName"]
-            print(f'      Generating image for channel {color}: ')
+            print(f'        Generating image for channel {color}: ')
             if (n_chan - m) <= len(xml_scales):
                 xml_scale = xml_scales[-(n_chan - m)]
                 white_value = xml_scale.attrib["WhiteValue"]
@@ -208,7 +210,7 @@ class LifClass(LifFile):
             start = time.time()
 
             if z_depth > 1:
-                print(f'      Found z-stack of depth {z_depth}, will scan all images and select brightest value for '
+                print(f'        Found z-stack of depth {z_depth}, will scan all images and select brightest value for '
                       f'each pixel (which may come from different z-planes).')
 
                 ar = None
@@ -273,7 +275,7 @@ class LifClass(LifFile):
                 row += chunk_v
 
             end = time.time()
-            print(f'        Completed in {end - start} seconds.')
+            print(f'          Completed in {end - start} seconds.')
 
             if color == "Green":
                 img_green = ar
@@ -329,7 +331,7 @@ class LifClass(LifFile):
             # If there is no blue channel, then check whether we can substitute the cyan
             if img_cyan is not None:
                 # Have cyan but not blue. Use cyan in place of blue.
-                print('  No blue channel present, converting cyan channel to blue as replacement')
+                print('    No blue channel present, converting cyan channel to blue as replacement')
                 img_blue = img_cyan
             else:
                 # There is neither a blue nor cyan channel. Use zeros
@@ -340,6 +342,9 @@ class LifClass(LifFile):
 
         # imwrite requires BGR order, backwards from usual RGB
         merged = np.dstack((img_blue, img_green, img_red))
+
+        if self.conversion_options.rotate180:
+            merged = np.flip(merged, (0, 1))
 
         if self.conversion_options.convert_format == self.Options.Format.jpg:
             self.write_jpg(merged, img.name, bit_depth)
@@ -373,7 +378,7 @@ class LifClass(LifFile):
     def write_jpg(self, merged, img_name, source_bit_depth):
 
         new_path = self.generate_filepath(img_name)
-        print('    Writing RGB merged file: "' + os.path.basename(new_path) + '"')
+        print('      Writing RGB merged file: "' + os.path.basename(new_path) + '"')
         start = time.time()
         if source_bit_depth == 16:
             # JPG only supports 8-bit depth, so divide by 256 using
@@ -396,17 +401,17 @@ class LifClass(LifFile):
 
         cv2.imwrite(new_path, merged, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
         end = time.time()
-        print(f'    Completed in {end - start} seconds.')
+        print(f'      Completed in {end - start} seconds.')
 
     def write_tiff(self, merged, img_name):
 
         new_path = self.generate_filepath(img_name)
-        print('    Writing RGB merged file: "' + os.path.basename(new_path) + '"')
+        print('      Writing RGB merged file: "' + os.path.basename(new_path) + '"')
         start = time.time()
 
         cv2.imwrite(new_path, merged)
         end = time.time()
-        print(f'    Completed in {end - start} seconds.')
+        print(f'      Completed in {end - start} seconds.')
 
     # Recursively finds metadata for all elements having a "Data/Image" subunit.
     def _recursive_metadata_find(self, tree, return_list=None, path=""):

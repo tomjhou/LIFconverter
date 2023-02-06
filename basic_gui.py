@@ -1,6 +1,6 @@
 import tkinter as tk
 import enum
-from tkinter import ttk, filedialog
+from tkinter import ttk
 from functools import partial
 import ctypes
 import threading
@@ -48,6 +48,10 @@ class basic_gui:
             # returns id of the respective thread
             if hasattr(self, '_thread_id'):
                 return self._thread_id
+
+            # Pycharm complains that _active is not part of threading.py
+            # I can't figure out where _active is actually defined, so I
+            # just suppressed this warning.
             for id, thread in threading._active.items():
                 if thread is self:
                     return id
@@ -65,6 +69,8 @@ class basic_gui:
     root = None
     lock1 = threading.Lock()
     current_thread: Optional[thread_with_exception] = None
+    button_cancel = None
+    button_exit = None
 
     def __init__(self):
 
@@ -72,18 +78,6 @@ class basic_gui:
         self.root = root
         self.button_list = []
         self.status_label_list = []
-
-    def do_cancel(self):
-        self.lock1.acquire()
-        if self.current_thread is not None:
-            # Disable cancel button while awaiting cancellation
-            self.set_widget_state(self.button_cancel, False)
-            self.set_widget_text(self.button_cancel, "Cancel pending...")
-            self.current_thread.raise_exception()
-        self.lock1.release()
-
-    def do_exit(self):
-        self.root.quit()
 
     @staticmethod
     def set_widget_state(widget, state: bool):
@@ -103,6 +97,19 @@ class basic_gui:
     def set_enabled_status(self, enabled: bool):
         for b in self.button_list:
             self.set_widget_state(b, enabled)
+
+    def clear_status_text(self):
+        for b in self.status_label_list:
+            # Column 1 is wide text line
+            self.set_widget_text(b[1], "")
+
+    def set_status_text(self, row, text):
+        if type(text) is tuple:
+            self.set_widget_text(self.title_list[row], text[0])
+            self.set_widget_text(self.label_list[row], text[1])
+        else:
+            self.set_widget_text(self.title_list[row], self.default_title_list[row])
+            self.set_widget_text(self.label_list[row], text)
 
     def add_boxed_radio_button_column(self, parent_frame, button_names=None,
                                       backing_var=None, command=None,
@@ -165,29 +172,54 @@ class basic_gui:
 
         return button_list
 
+    def do_cancel(self):
+        self.lock1.acquire()
+        if self.current_thread is not None:
+            print('User has requested to cancel conversion. Now awaiting end of thread.')
+            # Disable cancel button while awaiting cancellation
+            self.set_widget_state(self.button_cancel, False)
+            self.set_widget_text(self.button_cancel, "Cancel pending...")
+            self.set_status_text(1, "Waiting for thread to end. This can take up to a minute or two...")
+
+            # This works unless the thread is stuck in external code, e.g. waiting for file read/write operation
+            # or performing a long mathematical operation. There seems to be no way to kill a thread in the middle of
+            # such a process. Whereas it might be possible to terminate() a Process, but we can't use that because
+            # the GUI has to all run on the same Process.
+            self.current_thread.raise_exception()
+        else:
+            # Thread already ended? Should we just ignore?
+            pass
+        self.lock1.release()
+
+    def do_exit(self):
+        self.root.quit()
+
     def operation_end(self):
         # Call this at end of operation to re-enable buttons
         self.set_enabled_status(True)
+        print('Conversion ended')
+        self.set_widget_state(self.button_cancel, True)
+        self.set_widget_text(self.button_cancel, "Cancel")
+        self.set_status_text(1, "Completed")
+        self.current_thread = None
 
     def handle_button(self, cmd):
         # Disable buttons while conversion is taking place
         self.set_enabled_status(False)
+        self.clear_status_text()
         self.current_thread = self.thread_with_exception(target=partial(self._threaded_worker, cmd))
         # Start conversion in background
         self.current_thread.start()
 
-    def _threaded_worker(self, cmd):
+    def _threaded_worker(self, cmd) -> None:
         try:
             cmd()
         except Exception as e:
-            print('Conversion exception: ' + str(e))
+            # Somehow cancel does not send code here, but goes straight to finally clause
+            print('Error during conversion: ' + str(e))
         finally:
             self.lock1.acquire()
-            print('Conversion ended')
             self.operation_end()
-            self.set_widget_state(self.button_cancel, True)
-            self.set_widget_text(self.button_cancel, "Cancel")
-            self.current_thread = None
             self.lock1.release()
 
     def add_status_text_lines(self, parent_frame, values):
@@ -196,16 +228,19 @@ class basic_gui:
         frame.pack(side=tk.TOP, fill=tk.X, padx=2, pady=2)
         frame.columnconfigure(1, weight=1)
 
-        label_list = []
+        self.default_title_list = []
+        self.title_list = []
+        self.label_list = []
 
         for x in range(len(values)):
-            tk.Label(frame, text=values[x], anchor="e", justify=tk.RIGHT).grid(row=x, column=0, sticky=tk.E)
-            lab = tk.Label(frame, borderwidth=1, anchor="w", relief="sunken")
-            lab.grid(row=x, column=1, sticky=tk.W + tk.E)
+            l1 = tk.Label(frame, text=values[x], anchor="e", justify=tk.RIGHT)
+            l1.grid(row=x, column=0, sticky=tk.E)
+            l2 = tk.Label(frame, borderwidth=1, anchor="w", relief="sunken")
+            l2.grid(row=x, column=1, sticky=tk.W + tk.E)
 
-            label_list.append(lab)
-
-        return label_list
+            self.default_title_list.append(values[x])
+            self.title_list.append(l1)
+            self.label_list.append(l2)
 
     def run_gui(self):
         """
