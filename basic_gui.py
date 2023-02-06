@@ -49,9 +49,7 @@ class basic_gui:
             if hasattr(self, '_thread_id'):
                 return self._thread_id
 
-            # Pycharm complains that _active is not part of threading.py
-            # I can't figure out where _active is actually defined, so I
-            # just suppressed this warning.
+            # Pycharm complains that _active is protected. But it works anyway, because this is a child class.
             for id, thread in threading._active.items():
                 if thread is self:
                     return id
@@ -79,6 +77,7 @@ class basic_gui:
         self.button_list = []
         self.label_list = []
         self.title_list = []
+        self.default_title_list = []
 
     @staticmethod
     def set_widget_state(widget, state: bool):
@@ -118,8 +117,7 @@ class basic_gui:
     def add_boxed_radio_button_column(self, parent_frame, button_names=None,
                                       backing_var=None, command=None,
                                       side=None, fill=None,
-                                      padx=0, pady=0, text="",
-                                      top_object=None):
+                                      padx=0, pady=0, text=""):
 
         if button_names is None:
             button_names = {}
@@ -130,10 +128,8 @@ class basic_gui:
 
         elt = self.add_radio_button_column(frame, button_names, backing_var, command)
 
-#        if top_object is not None:
-#            top_object.pack(before=elt, side=tk.LEFT, anchor=tk.NW, pady=(6,6), padx=10)
-
-        return (frame, elt)
+        # Returns inner frame and first element within it, to allow insertion of new widgets just above it.
+        return frame, elt
 
     @staticmethod
     def add_radio_button_column(parent_frame, button_names, backing_var, command=None):

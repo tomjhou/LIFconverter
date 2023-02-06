@@ -6,26 +6,31 @@ import tkinter as tk
 from tkinter import filedialog
 import numpy as np
 import cv2                            # install with pip install opencv-python
+from typing import Optional
 
 from basic_gui import basic_flag
 from reader import LifFile    # This supersedes the install with pip install readlif
 
 
-class LifClass(LifFile):
-    class Options:
+class LifClass:
 
+    class Options:
+        """
+            Options for converting files. These specify output formats and whether to overwrite existing files
+        """
         class Format(enum.Enum):
-            none = 0
+            xml = 0
             jpg = 1
             tiff = 2
 
-        write_xml_metadata = False
         overwrite_existing = True
         rotate180 = True
 
         def __init__(self):
-            self.convert_format = self.Format.none
+            self.convert_format = self.Format.jpg
 
+    # The following variables are cumulative, i.e. if you convert more than one file with the same object
+    # they will not be reset between conversions.
     num_images_converted = 0
     num_images_skipped = 0
     num_images_error = 0
@@ -34,47 +39,55 @@ class LifClass(LifFile):
     conversion_options = Options()
     lif_modified_time = None
     root_window = None
+    file_path = None
+    file_base_name = None
+
+    lif_file_object: Optional[LifFile] = None
 
     class UserCanceled(Exception):
         # Custom exception class, no code needed.
         pass
 
-    def __init__(self, file_path:str = "", conversion_options: Options = None, root_window=None):
+    def __init__(self, conversion_options: Options = None, root_window=None):
 
         if root_window is not None:
             self.root_window = root_window
 
-        if file_path == "":
-
-            if self.root_window is None:
-                self.root_window = tk.Tk()
-                self.root_window.withdraw()
-                self.root_window.attributes('-topmost', True)  # Opened windows will be active. above all windows despite selection.
-
-            file_path = filedialog.askopenfilename(filetypes=[("LIF files", "*.lif")])
-
-            if file_path == "":
-                raise self.UserCanceled
-
         self.stopFlag = basic_flag(self.root_window)  # Used to stop ongoing conversion
-        self.file_base_name = os.path.basename(file_path)
-        self.file_path = file_path
-
-        self.lif_modified_time = os.path.getmtime(file_path)
 
         if conversion_options is not None:
             self.conversion_options = conversion_options
 
+    def prompt_select_file(self):
+
+        if self.root_window is None:
+            self.root_window = tk.Tk()
+            self.root_window.withdraw()
+            self.root_window.attributes('-topmost', True)  # Opened windows will be active. above all windows despite selection.
+
+        file_path = filedialog.askopenfilename(filetypes=[("LIF files", "*.lif")])
+
+        if file_path == "":
+            raise self.UserCanceled
+
+        return file_path
+
+    def open_file(self, file_path):
+
+        self.file_path = file_path
+        self.file_base_name = os.path.basename(file_path)
+        self.lif_modified_time = os.path.getmtime(file_path)
+
         try:
-            LifFile.__init__(self, file_path)
+            self.lif_file_object = LifFile(file_path)
         except Exception as e:
             print(f'  Error encountered while opening LIF file: {e}')
             print('  Please check whether file is corrupted.')
             self.num_images_error += 1
 
-    def prompt_select_image(self):
+    def prompt_select_image_from_single_file(self):
 
-        img_list = [i for i in self.get_iter_image()]
+        img_list = [i for i in self.lif_file_object.get_iter_image()]
         print(f'\nChoose image to convert within file "{self.file_base_name}":')
         for n in range(len(img_list)):
             print(f'{n}: "{img_list[n].name}", width {img_list[n].dims.x} x height {img_list[n].dims.y}')
@@ -88,13 +101,13 @@ class LifClass(LifFile):
         self.stopFlag.set()
 
     # Convert one or more images in a single file
-    def convert(self, n:int = -1):
+    def convert(self, n: int = -1):
 
         # Access a specific image directly
         # img_0 = new.get_image(0)
         # Create a list of images using a generator
         try:
-            img_list = [i for i in self.get_iter_image()]
+            img_list = [i for i in self.lif_file_object.get_iter_image()]
         except Exception as e:
             print(f'\n  Error while reading image list: {e}')
             print('  Unable to convert file, possibly due to file corruption or truncation. Will skip')
@@ -102,20 +115,18 @@ class LifClass(LifFile):
             return
 
         xml_metadata = self._recursive_metadata_find(
-            self.xml_root, )  # self.xml_root.findall("./Element/Children/Element/Data/Image")
+            self.lif_file_object.xml_root, )  # self.xml_root.findall("./Element/Children/Element/Data/Image")
 
-        if self.conversion_options.write_xml_metadata:
-            # Write metadata to XML file
+        if self.conversion_options.convert_format == LifClass.Options.Format.xml:
+            # Extract xml header info only
             paths = os.path.splitext(self.file_path)
             xml_path = paths[0] + ".xml"
 
             with open(xml_path, 'w') as f:
-                f.write(self.xml_header)
+                f.write(self.lif_file_object.xml_header)
 
             print(f'  Wrote file {os.path.basename(xml_path)}')
             self.num_xml_written += 1
-
-        if self.conversion_options.convert_format == self.Options.Format.none:
             return
 
         if n < 0:

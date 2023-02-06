@@ -1,7 +1,6 @@
 import os
 import tkinter as tk
 from tkinter import ttk, filedialog
-from functools import partial
 
 from LifClass import LifClass
 from basic_gui import basic_gui, basic_flag
@@ -20,7 +19,6 @@ class gui(basic_gui):
 
         super().__init__()
         self.var_recursive = tk.BooleanVar(self.root)
-        self.var_write_xml_metadata = tk.BooleanVar(self.root)
         self.var_rotate180 = tk.BooleanVar(self.root, True)
         self.skip_string_var = tk.StringVar(self.root, "skip")
         self.format_string_var = tk.StringVar(self.root, LifClass.Options.Format.jpg.name)
@@ -32,17 +30,12 @@ class gui(basic_gui):
         if self.output_folder is not None:
             os.startfile(self.output_folder)
 
-    def do_update_enabled_status_from_gui(self):
-        enabled = (self.format_string_var.get() != "none") or (self.var_write_xml_metadata.get())
-        self.set_enabled_status(enabled)
-
     def get_options_from_gui(self):
 
         v = self.format_string_var.get()
         self.conversion_options.convert_format = LifClass.Options.Format[v]
 
         self.conversion_options.overwrite_existing = (self.skip_string_var.get() == "all")
-        self.conversion_options.write_xml_metadata = self.var_write_xml_metadata.get()
         self.conversion_options.rotate180 = self.var_rotate180.get()
 
     def get_file_list(self, folder_path):
@@ -90,12 +83,21 @@ class gui(basic_gui):
         self.get_options_from_gui()
 
         num_files_done = 0
-        num_images_done = 0
-        num_images_skipped = 0
-        num_images_error = 0
-        num_xml = 0
-
         num_files = len(file_list)
+
+        self.lif_object = LifClass(conversion_options=self.conversion_options, root_window=self.root)
+
+        if self.conversion_options.overwrite_existing:
+            string1 = "all files"
+        else:
+            string1 = "all unconverted files"
+
+        if self.var_recursive.get():
+            string2 = ", including subfolders"
+        else:
+            string2 = "."
+
+        print(f'\nProcessing {string1} in folder "{folder_path}"{string2}')
 
         try:
             for x in range(num_files):
@@ -109,32 +111,37 @@ class gui(basic_gui):
                 self.set_status_text(1, ("Folder:", os.path.dirname(f.path)))
 
                 self.root.update()
-                self.lif_object = LifClass(f.path, conversion_options=self.conversion_options, root_window=self.root)
+                self.lif_object.open_file(f.path)
                 self.lif_object.convert()
                 num_files_done += 1
-                num_images_done += self.lif_object.num_images_converted
-                num_images_skipped += self.lif_object.num_images_skipped
-                num_images_error += self.lif_object.num_images_error
-                num_xml += self.lif_object.num_xml_written
         except LifClass.UserCanceled:
-            # Add any final images converted before cancellation
-            if self.lif_object is not None:
-                num_images_done += self.lif_object.num_images_converted
-                num_images_skipped += self.lif_object.num_images_skipped
-                num_images_error += self.lif_object.num_images_error
-                num_xml += self.lif_object.num_xml_written
+            pass
         except Exception as e:
             print('Unexpected exception ' + str(e))
+        else:
+            self.print_results(self.lif_object, num_files_done)
 
-        print(f'\nConverted {num_images_done} images in {num_files_done} LIF files. ', end='')
-        if num_xml > 0:
-            print(f'Wrote {num_xml} XML files. ', end='')
-        print(f'Skipped {num_images_skipped} images, encountered errors in {num_images_error} images/files\n')
+    def print_results(self, lo: LifClass, num_files: int = 0):
+
+        print(f'\nConverted {lo.num_images_converted} images ', end='')
+        if num_files > 0:
+            print(f'in {num_files} LIF files. ', end='')
+        else:
+            print('. ', end='')
+        if lo.num_xml_written > 0:
+            print(f'Wrote {lo.num_xml_written} XML files. ', end='')
+        print(f'Skipped {self.lif_object.num_images_skipped} images, encountered errors in {self.lif_object.num_images_error} images/files\n')
 
     def start_convert_file(self):
 
-        file_path = filedialog.askopenfilename(filetypes=[("LIF files", "*.lif")])
-        if file_path == "":
+        self.get_options_from_gui()
+        # If converting just one file, then always overwrite
+        self.conversion_options.overwrite_existing = True
+        self.lif_object = LifClass(conversion_options=self.conversion_options, root_window=self.root)
+
+        try:
+            file_path = self.lif_object.prompt_select_file()
+        except LifClass.UserCanceled:
             self.set_status_text(0, "User canceled")
             return
 
@@ -145,32 +152,33 @@ class gui(basic_gui):
         # Update GUI now because opening/converting lif file might take a long time
         self.root.update()
 
-        self.get_options_from_gui()
-        # If converting just one file, then always overwrite
-        self.conversion_options.overwrite_existing = True
         try:
-            self.lif_object = LifClass(file_path, conversion_options=self.conversion_options, root_window=self.root)
+            self.lif_object.open_file(file_path)
             self.lif_object.convert()
-        except LifClass.UserCanceled:
-            self.set_status_text(0, "User canceled")
+        except Exception as e:
+            print("Error during conversion: " + str(e))
         else:
-            print(f'\nConverted {self.lif_object.num_images_converted} images. ', end='')
-            if self.lif_object.num_xml_written > 0:
-                print(f'Wrote {self.lif_object.num_xml_written} XML files. ', end='')
-            print(
-                f'Skipped {self.lif_object.num_images_skipped} images, encountered errors in {self.lif_object.num_images_error} images/files\n')
+            self.print_results(self.lif_object)
 
     def start_convert_image(self):
 
         self.get_options_from_gui()
+        self.lif_object = LifClass(conversion_options=self.conversion_options, root_window=self.root)
         try:
-            self.lif_object = LifClass(conversion_options=self.conversion_options, root_window=self.root)
-            self.set_status_text(0, self.lif_object.file_base_name)
-            self.root.update()
-            n = self.lif_object.prompt_select_image()
-            self.lif_object.convert(n)
+            file_path = self.lif_object.prompt_select_file()
         except LifClass.UserCanceled:
-            self.set_status_text(0, text="User canceled")
+            self.set_status_text(0, "User canceled")
+            return
+
+        self.set_status_text(0, self.lif_object.file_base_name)
+        self.root.update()
+
+        try:
+            self.lif_object.open_file(file_path)
+            n = self.lif_object.prompt_select_image_from_single_file()
+            self.lif_object.convert(n)
+        except Exception as e:
+            print("Error during conversion: " + str(e))
         else:
             print(f'\nConverted {self.lif_object.num_images_converted} images')
 
@@ -206,19 +214,18 @@ class gui(basic_gui):
 
         # Dictionary to create multiple buttons
         values = {"Convert single LIF file": self.start_convert_file,
-                  "Convert folder": self.start_convert_folder,}
+                  "Convert folder": self.start_convert_folder}
 
         self.button_list = self.add_boxed_button_column(frame1b, values, side=tk.LEFT, fill=tk.X)
 
         # Radio buttons for output options
         values = {"JPG (smallest files, highly recommended)": LifClass.Options.Format.jpg,
                   "TIFF": LifClass.Options.Format.tiff,
-                  "None (use if extracting XML header)": LifClass.Options.Format.none}
+                  "XML (extracts header info only)": LifClass.Options.Format.xml}
 
         (f, elt) = self.add_boxed_radio_button_column(frame1b, values, backing_var=self.format_string_var,
                                                       side=tk.TOP, fill=tk.X,
                                                       padx=15, pady=8,
-                                                      command=self.do_update_enabled_status_from_gui,
                                                       text="Output options")
 
         cb = ttk.Checkbutton(f, text="Rotate 180 degrees?", variable=self.var_rotate180)
@@ -238,11 +245,6 @@ class gui(basic_gui):
 
         frame1a = tk.Frame(frame1, borderwidth=5)
         frame1a.pack(side=tk.BOTTOM, fill=tk.X, padx=15, pady=5)
-
-        ttk.Checkbutton(frame1a, text="Extract XML header (if you don't know what this is, you probably don't need it)",
-                        variable=self.var_write_xml_metadata,
-                        command=self.do_update_enabled_status_from_gui). \
-            pack(side=tk.TOP, anchor=tk.NW)
 
         values = ["Current file:",
                   "Status:"]

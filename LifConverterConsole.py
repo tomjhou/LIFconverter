@@ -75,7 +75,7 @@ elif answer_source == '2':
 elif answer_source == '3':
 
     l1 = LifClass(conversion_options=conversion_options)
-    n = l1.prompt_select_image()
+    n = l1.prompt_select_image_from_single_file()
     l1.convert(n)
 
 else:
