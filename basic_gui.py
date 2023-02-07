@@ -30,6 +30,12 @@ class basic_flag:
             return False
 
 
+def set_widget_text(widget, text):
+    if widget is None:
+        return
+    widget["text"] = text
+
+
 class basic_gui:
 
     class ThreadRunning(Exception):
@@ -50,9 +56,9 @@ class basic_gui:
                 return self._thread_id
 
             # Pycharm complains that _active is protected. But it works anyway, because this is a child class.
-            for id, thread in threading._active.items():
+            for th_id, thread in threading._active.items():
                 if thread is self:
-                    return id
+                    return th_id
 
             return None
 
@@ -70,14 +76,53 @@ class basic_gui:
     button_cancel = None
     button_exit = None
 
+    class StatusLines:
+
+        label_list = []
+        title_list = []
+        default_title_list = []
+
+        def add(self, parent_frame, values):
+            frame = tk.Frame(parent_frame, borderwidth=5)
+            frame.pack(side=tk.TOP, fill=tk.X, padx=2, pady=2)
+            frame.columnconfigure(1, weight=1)
+
+            self.default_title_list = []
+            self.title_list = []
+            self.label_list = []
+
+            for x in range(len(values)):
+                l1 = tk.Label(frame, text=values[x], anchor="e", justify=tk.RIGHT)
+                l1.grid(row=x, column=0, sticky=tk.E)
+                l2 = tk.Label(frame, borderwidth=1, anchor="w", relief="sunken")
+                l2.grid(row=x, column=1, sticky=tk.W + tk.E)
+
+                self.default_title_list.append(values[x])
+                self.title_list.append(l1)
+                self.label_list.append(l2)
+
+        def clear(self):
+            for b in self.label_list:
+                # Column 1 is wide text line
+                set_widget_text(b, "")
+            for x in range(len(self.title_list)):
+                # Column 1 is wide text line
+                set_widget_text(self.title_list[x], self.default_title_list[x])
+
+        def set_text(self, row, text):
+            if type(text) is tuple:
+                set_widget_text(self.title_list[row], text[0])
+                set_widget_text(self.label_list[row], text[1])
+            else:
+                set_widget_text(self.title_list[row], self.default_title_list[row])
+                set_widget_text(self.label_list[row], text)
+
     def __init__(self):
 
         root = tk.Tk()
         self.root = root
         self.button_list = []
-        self.label_list = []
-        self.title_list = []
-        self.default_title_list = []
+        self.status: basic_gui.StatusLines = self.StatusLines()
 
     @staticmethod
     def set_widget_state(widget, state: bool):
@@ -88,31 +133,9 @@ class basic_gui:
         else:
             widget["state"] = "disabled"
 
-    @staticmethod
-    def set_widget_text(widget, text):
-        if widget is None:
-            return
-        widget["text"] = text
-
     def set_enabled_status(self, enabled: bool):
         for b in self.button_list:
             self.set_widget_state(b, enabled)
-
-    def clear_status_text(self):
-        for b in self.label_list:
-            # Column 1 is wide text line
-            self.set_widget_text(b, "")
-        for x in range(len(self.title_list)):
-            # Column 1 is wide text line
-            self.set_widget_text(self.title_list[x], self.default_title_list[x])
-
-    def set_status_text(self, row, text):
-        if type(text) is tuple:
-            self.set_widget_text(self.title_list[row], text[0])
-            self.set_widget_text(self.label_list[row], text[1])
-        else:
-            self.set_widget_text(self.title_list[row], self.default_title_list[row])
-            self.set_widget_text(self.label_list[row], text)
 
     def add_boxed_radio_button_column(self, parent_frame, button_names=None,
                                       backing_var=None, command=None,
@@ -188,8 +211,8 @@ class basic_gui:
             print('User has requested to cancel conversion. Now awaiting end of thread.')
             # Disable cancel button while awaiting cancellation
             self.set_widget_state(self.button_cancel, False)
-            self.set_widget_text(self.button_cancel, "Cancel pending...")
-            self.set_status_text(1, "Waiting for thread to end. This can take up to a minute or two...")
+            set_widget_text(self.button_cancel, "Cancel pending...")
+            self.status.set_text(1, "Waiting for thread to end. This can take up to a minute or two...")
 
             # This works unless the thread is stuck in external code, e.g. waiting for file read/write operation
             # or performing a long mathematical operation. There seems to be no way to kill a thread in the middle of
@@ -209,14 +232,14 @@ class basic_gui:
         self.set_enabled_status(True)
         print('Conversion ended')
         self.set_widget_state(self.button_cancel, True)
-        self.set_widget_text(self.button_cancel, "Cancel")
-        self.set_status_text(1, "Completed")
+        set_widget_text(self.button_cancel, "Cancel")
+        self.status.set_text(1, "Completed")
         self.current_thread = None
 
     def handle_button(self, cmd):
         # Disable buttons while conversion is taking place
         self.set_enabled_status(False)
-        self.clear_status_text()
+        self.status.clear()
         self.current_thread = self.thread_with_exception(target=partial(self._threaded_worker, cmd))
         # Start conversion in background
         self.current_thread.start()
@@ -231,26 +254,6 @@ class basic_gui:
             self.lock1.acquire()
             self.operation_end()
             self.lock1.release()
-
-    def add_status_text_lines(self, parent_frame, values):
-
-        frame = tk.Frame(parent_frame, borderwidth=5)
-        frame.pack(side=tk.TOP, fill=tk.X, padx=2, pady=2)
-        frame.columnconfigure(1, weight=1)
-
-        self.default_title_list = []
-        self.title_list = []
-        self.label_list = []
-
-        for x in range(len(values)):
-            l1 = tk.Label(frame, text=values[x], anchor="e", justify=tk.RIGHT)
-            l1.grid(row=x, column=0, sticky=tk.E)
-            l2 = tk.Label(frame, borderwidth=1, anchor="w", relief="sunken")
-            l2.grid(row=x, column=1, sticky=tk.W + tk.E)
-
-            self.default_title_list.append(values[x])
-            self.title_list.append(l1)
-            self.label_list.append(l2)
 
     def run_gui(self):
         """

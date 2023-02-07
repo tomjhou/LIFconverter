@@ -73,7 +73,7 @@ class gui(basic_gui):
 
         if folder_path == '':
             print('\nNo folder chosen.\n')
-            self.set_status_text(0, "No folder chosen")
+            self.status.set_text(0, "No folder chosen")
             return
 
         self.output_folder = folder_path
@@ -107,8 +107,8 @@ class gui(basic_gui):
 
                 f = file_list[x]
                 print(f'\nProcessing file "{f.name}"')
-                self.set_status_text(0, f'({x + 1} of {num_files}) {f.name}')
-                self.set_status_text(1, ("Folder:", os.path.dirname(f.path)))
+                self.status.set_text(0, f'({x + 1} of {num_files}) {f.name}')
+                self.status.set_text(1, ("Folder:", os.path.dirname(f.path)))
 
                 self.root.update()
                 self.lif_object.open_file(f.path)
@@ -130,7 +130,8 @@ class gui(basic_gui):
             print('. ', end='')
         if lo.num_xml_written > 0:
             print(f'Wrote {lo.num_xml_written} XML files. ', end='')
-        print(f'Skipped {self.lif_object.num_images_skipped} images, encountered errors in {self.lif_object.num_images_error} images/files\n')
+        print(f'Skipped {self.lif_object.num_images_skipped} images, '
+              f'encountered errors in {self.lif_object.num_images_error} images/files\n')
 
     def start_convert_file(self):
 
@@ -142,13 +143,13 @@ class gui(basic_gui):
         try:
             file_path = self.lif_object.prompt_select_file()
         except LifClass.UserCanceled:
-            self.set_status_text(0, "User canceled")
+            self.status.set_text(0, "User canceled")
             return
 
         base_name = os.path.basename(file_path)
         self.output_folder = os.path.dirname(file_path)
         print(f'\nProcessing file "{base_name}"')
-        self.set_status_text(0, base_name)
+        self.status.set_text(0, base_name)
         # Update GUI now because opening/converting lif file might take a long time
         self.root.update()
 
@@ -167,10 +168,10 @@ class gui(basic_gui):
         try:
             file_path = self.lif_object.prompt_select_file()
         except LifClass.UserCanceled:
-            self.set_status_text(0, "User canceled")
+            self.status.set_text(0, "User canceled")
             return
 
-        self.set_status_text(0, self.lif_object.file_base_name)
+        self.status.set_text(0, self.lif_object.file_base_name)
         self.root.update()
 
         try:
@@ -249,7 +250,7 @@ class gui(basic_gui):
         values = ["Current file:",
                   "Status:"]
 
-        self.add_status_text_lines(self.root, values)
+        self.status.add(self.root, values)
 
         b = tk.Button(self.root, text="Open output folder", command=self.do_open_output_folder)
         b.pack(side=tk.TOP, padx=15, pady=(1, 10), ipadx=20, ipady=10)

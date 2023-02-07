@@ -63,7 +63,7 @@ class LifClass:
         if self.root_window is None:
             self.root_window = tk.Tk()
             self.root_window.withdraw()
-            self.root_window.attributes('-topmost', True)  # Opened windows will be active. above all windows despite selection.
+            self.root_window.attributes('-topmost', True)
 
         file_path = filedialog.askopenfilename(filetypes=[("LIF files", "*.lif")])
 
@@ -383,8 +383,8 @@ class LifClass:
             ext = ".jpg"
         elif self.conversion_options.convert_format == self.Options.Format.tiff:
             ext = ".tiff"
-        elif self.conversion_options.convert_format == self.Options.Format.none:
-            return ""
+        elif self.conversion_options.convert_format == self.Options.Format.xml:
+            ext = ".xml"
         else:
             raise f"Unknown format {self.conversion_options.convert_format}"
 
