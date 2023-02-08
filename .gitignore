@@ -1,3 +1,10 @@
+#
+# If you add .idea files to .gitignore after they are already tracked, you need to
+# do the following to stop tracking existing files:
+#
+# git rm -r --cached .idea
+#
+
 /__pycache__
 /__pycache__/
 /__pycache__/*.pyc
