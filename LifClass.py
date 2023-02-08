@@ -5,19 +5,19 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog
 import numpy as np
-import cv2                            # install with pip install opencv-python
+import cv2  # install with pip install opencv-python
 from typing import Optional
 
 from basic_gui import basic_flag
-from reader import LifFile    # This supersedes the install with pip install readlif
+from reader import LifFile  # This supersedes the install with pip install readlif
 
 
 class LifClass:
-
     class Options:
         """
             Options for converting files. These specify output formats and whether to overwrite existing files
         """
+
         class Format(enum.Enum):
             xml = 0
             jpg = 1
@@ -25,6 +25,7 @@ class LifClass:
 
         overwrite_existing = True
         rotate180 = True
+        separate_CMY = True # Put cyan, magenta and yellow into their own file if needed to avoid overlap
 
         def __init__(self):
             self.convert_format = self.Format.jpg
@@ -197,6 +198,11 @@ class LifClass:
         img_blue = None
         img_cyan = None
         img_magenta = None
+        img_yellow = None
+
+        make_cyan_file = False
+        make_magenta_file = False
+        make_yellow_file = False
 
         print(f'      Image size is: width {img.dims.x} x height {img.dims.y}')
         print(f'      Found {n_chan} color channels, bit depth is {bit_depth}')
@@ -302,37 +308,64 @@ class LifClass:
                 img_cyan = ar
             elif color == "Magenta":
                 img_magenta = ar
+            elif color == "Yellow":
+                img_yellow = ar
 
         if self.stopFlag.check():
             raise self.UserCanceled
 
         if img_magenta is not None:
             if img_red is None and img_blue is None:
+                # Neither red nor blue channels already exist, so just write normally
                 img_red = img_magenta
                 img_blue = img_magenta
             elif img_red is None and img_blue is not None:
+                # If blue already exists, but red is empty, then just put this into red channel
                 img_red = img_magenta
             elif img_blue is None and img_red is not None:
+                # If red already exists, and blue is empty, then put into blue
                 img_blue = img_magenta
             else:
-                img_red = img_magenta >> 1
-                img_blue = img_magenta >> 1
+                if self.conversion_options.separate_CMY:
+                    make_magenta_file = True
+                else:
+                    # Both red and blue exist ... just bite the bullet and add it to the existing colors,
+                    # at reduced intensity
+                    im = img_magenta.astype(np.uint32) >> 1  # divide by two
+                    img_red = img_red.astype(np.uint32) + im
+                    img_blue = img_blue.astype(np.uint32) + im
 
-        if img_red is None:
-            img_red = np.zeros(d, dtype=pixel_type_string)
-        if img_green is None:
-            img_green = np.zeros(d, dtype=pixel_type_string)
+                    img_red[img_red > max_val] = max_val
+                    img_blue[img_blue > max_val] = max_val
+
+                    # Have to "demote" type back down to original 8 or 16-bit.
+                    img_red = img_red.astype(pixel_type)
+                    img_blue = img_blue.astype(pixel_type)
 
         if img_cyan is not None:
-            if img_blue is not None:
+            if img_green is None and img_blue is None:
+                # Neither green nor blue exists, so write normally
+                img_green = img_cyan
+                img_blue = img_cyan
+            elif img_blue is None:
+                # Green channel is occupied but not blue. Put cyan channel in blue only
+                print('    Converting cyan to blue, to avoid overlap with green channel')
+                img_blue = img_cyan
+            elif img_green is None:
+                # Blue channel is occupied but not green. Put cyan channel in green only
+                print('    Converting cyan to green, to avoid overlap with blue')
+                img_blue = img_cyan
+            else:
                 # Have both blue and cyan channels. Merge cyan into main image, at reduced brightness
-                if True:
+                if self.conversion_options.separate_CMY:
+                    make_cyan_file = True
+                else:
                     # If we have both blue and cyan, then merge it into green and blue channels.
                     # Note: we have to temporarily promote datatype to 32-bit, or else numbers will overflow,
                     # and then demote back to original datatype.
-                    img_cyan = img_cyan.astype(np.uint32) >> 1  # divide by two
-                    img_green = img_green.astype(np.uint32) + img_cyan
-                    img_blue = img_blue.astype(np.uint32) + img_cyan
+                    im = img_cyan.astype(np.uint32) >> 1  # divide by two
+                    img_green = img_green.astype(np.uint32) + im
+                    img_blue = img_blue.astype(np.uint32) + im
 
                     img_green[img_green > max_val] = max_val
                     img_blue[img_blue > max_val] = max_val
@@ -341,16 +374,39 @@ class LifClass:
                     img_green = img_green.astype(pixel_type)
                     img_blue = img_blue.astype(pixel_type)
 
-        # Now merge channels into a single image, but first convert missing channels to zeros.
-        if img_blue is None:
-            # If there is no blue channel, then check whether we can substitute the cyan
-            if img_cyan is not None:
-                # Have cyan but not blue. Use cyan in place of blue.
-                print('    No blue channel present, converting cyan channel to blue as replacement')
-                img_blue = img_cyan
+        if img_yellow is not None:
+            if img_red is None and img_green is None:
+                # Neither red nor green channel exists, just write normally.
+                img_red = img_yellow
+                img_green = img_yellow
+            elif img_red is None:
+                print('    Converting yellow to red, to avoid overlap with green')
+                img_red = img_yellow
+            elif img_green is None:
+                print('    Converting yellow to green, to avoid overlap with red')
+                img_green = img_yellow
             else:
-                # There is neither a blue nor cyan channel. Use zeros
-                img_blue = np.zeros(d, dtype=pixel_type_string)
+                if self.conversion_options.separate_CMY:
+                    make_yellow_file = True
+                else:
+                    # Have both red and green.
+                    im = img_yellow.astype(np.uint32) >> 1  # divide by two
+                    img_green = img_green.astype(np.uint32) + im
+                    img_red = img_red.astype(np.uint32) + im
+
+                    img_green[img_green > max_val] = max_val
+                    img_red[img_red > max_val] = max_val
+
+                    # Have to "demote" type back down to original 8 or 16-bit.
+                    img_green = img_green.astype(pixel_type)
+                    img_red = img_red.astype(pixel_type)
+
+        if img_red is None:
+            img_red = np.zeros(d, dtype=pixel_type_string)
+        if img_green is None:
+            img_green = np.zeros(d, dtype=pixel_type_string)
+        if img_blue is None:
+            img_blue = np.zeros(d, dtype=pixel_type_string)
 
         if self.stopFlag.check():
             raise self.UserCanceled
@@ -361,17 +417,23 @@ class LifClass:
         if self.conversion_options.rotate180:
             merged = np.flip(merged, (0, 1))
 
-        if self.conversion_options.convert_format == self.Options.Format.jpg:
-            self.write_jpg(merged, img.name, bit_depth)
-        elif self.conversion_options.convert_format == self.Options.Format.tiff:
-            self.write_tiff(merged, img.name)
+        self.write_file(merged, img.name, bit_depth)
+
+        if self.conversion_options.separate_CMY:
+            img_zeros = np.zeros(d, dtype=pixel_type_string)
+            if make_cyan_file:
+                self.write_file(np.dstack((img_cyan, img_cyan, img_zeros)), img.name, bit_depth, suffix="cyan")
+            if make_magenta_file:
+                self.write_file(np.dstack((img_magenta, img_zeros, img_magenta)), img.name, bit_depth, suffix="magenta")
+            if make_yellow_file:
+                self.write_file(np.dstack((img_zeros, img_yellow, img_yellow)), img.name, bit_depth, suffix="yellow")
 
         self.num_images_converted += 1
         return
 
-    def generate_filepath(self, img_name):
+    def generate_filepath(self, img_name, suffix="RGB"):
 
-        suffix = "_RGB"
+        suffix = "_" + suffix
 
         # Make sure img_name doesn't have any slashes, as that will mess up filename saving
         # Replace any slashes with dashes.
@@ -390,41 +452,36 @@ class LifClass:
 
         return paths[0] + "_" + img_name + suffix + ext
 
-    def write_jpg(self, merged, img_name, source_bit_depth):
+    def write_file(self, merged, img_name, source_bit_depth, suffix="RGB"):
 
-        new_path = self.generate_filepath(img_name)
-        print('      Writing RGB merged file: "' + os.path.basename(new_path) + '"')
-        start = time.time()
-        if source_bit_depth == 16:
-            # JPG only supports 8-bit depth, so divide by 256 using
-            # memory-efficient method
-            chunk_v = 4
-            row = 0
-            d = merged.shape
-            while row < d[0]:
-                if row + chunk_v > d[0]:
-                    # Final chunk may be smaller than the previous ones.
-                    chunk_v = d[0] - row
-                # Convert one chunk to float
-                one_row = merged[row:row + chunk_v, ].astype(float)
-                one_row = one_row / 256
-                # Truncate underflow and overflow values.
-                one_row[one_row > 255] = 255
-                # Demote back to original data type and rewrite
-                merged[row:row + chunk_v, ] = one_row.astype(np.uint16)
-                row += chunk_v
-
-        cv2.imwrite(new_path, merged, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
-        end = time.time()
-        print(f'      Completed in {end - start} seconds.')
-
-    def write_tiff(self, merged, img_name):
-
-        new_path = self.generate_filepath(img_name)
-        print('      Writing RGB merged file: "' + os.path.basename(new_path) + '"')
+        new_path = self.generate_filepath(img_name, suffix)
+        print(f'      Writing {suffix} merged file: "' + os.path.basename(new_path) + '"')
         start = time.time()
 
-        cv2.imwrite(new_path, merged)
+        if self.conversion_options.convert_format == self.Options.Format.jpg:
+            if source_bit_depth == 16:
+                # JPG only supports 8-bit depth, so divide by 256 using
+                # memory-efficient method
+                chunk_v = 4
+                row = 0
+                d = merged.shape
+                while row < d[0]:
+                    if row + chunk_v > d[0]:
+                        # Final chunk may be smaller than the previous ones.
+                        chunk_v = d[0] - row
+                    # Convert one chunk to float
+                    one_row = merged[row:row + chunk_v, ].astype(float)
+                    one_row = one_row / 256
+                    # Truncate underflow and overflow values.
+                    one_row[one_row > 255] = 255
+                    # Demote back to original data type and rewrite
+                    merged[row:row + chunk_v, ] = one_row.astype(np.uint16)
+                    row += chunk_v
+
+            cv2.imwrite(new_path, merged, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        elif self.conversion_options.convert_format == self.Options.Format.tiff:
+            cv2.imwrite(new_path, merged)
+
         end = time.time()
         print(f'      Completed in {end - start} seconds.')
 
@@ -449,7 +506,7 @@ class LifClass:
             has_sub_children = len(item.findall("./Children/Element/Data")) > 0
 
             is_image = (
-                len(item.findall("./Data/Image")) > 0
+                    len(item.findall("./Data/Image")) > 0
             )
 
             if is_image:

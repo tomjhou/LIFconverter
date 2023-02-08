@@ -174,34 +174,45 @@ class basic_gui:
 
         return first_elt
 
-    def add_boxed_button_column(self, parent_frame, button_names, side=None, fill=None):
+    def add_boxed_button_column(self, parent_frame, button_names, side=None, fill=None, add_cancel=True, add_exit=True):
 
         frame = tk.Frame(parent_frame, highlightbackground="black", highlightthickness=1, relief="flat", borderwidth=5)
         frame.pack(side=side, fill=fill, padx=2, pady=2)
 
         frame_inset = tk.Frame(frame)  # , highlightbackground="black", highlightthickness=1)
         frame_inset.pack(anchor=tk.CENTER, pady=10)
-        return self.add_button_column(frame_inset, button_names)
+        return self.add_button_column(frame_inset, button_names, add_cancel=add_cancel, add_exit=add_exit)
 
-    def add_button_column(self, parent_frame, button_names):
+    BUTTON_INNER_PADDING = 10
+
+    def add_button(self, parent_frame, text, command, fill=True):
+        butt = ttk.Button(parent_frame, text=text, command=command)
+        if fill:
+            butt.pack(fill=tk.X, padx=10, pady=5, ipadx=self.BUTTON_INNER_PADDING, ipady=self.BUTTON_INNER_PADDING)
+        else:
+            butt.pack(padx=10, pady=5, ipadx=self.BUTTON_INNER_PADDING, ipady=self.BUTTON_INNER_PADDING)
+        return butt
+
+    def add_exit_button(self, parent_frame, fill=True):
+        self.button_exit = self.add_button(parent_frame, "Exit", partial(self.do_exit), fill=fill)
+
+    def add_button_column(self, parent_frame, button_names, add_cancel=True, add_exit=True):
 
         inner_padding = 10
 
         button_list = []
         button_index = 0
         for (text, value) in button_names.items():
-            butt = ttk.Button(parent_frame, text=text, command=partial(self.handle_button, value))
-            butt.pack(fill=tk.X, padx=10, pady=5, ipadx=inner_padding, ipady=inner_padding)
+            butt = self.add_button(parent_frame, text=text, command=partial(self.handle_button, value))
             button_list.append(butt)
             button_index += 1
 
-        butt = ttk.Button(parent_frame, text="Cancel", command=partial(self.do_cancel))
-        butt.pack(fill=tk.X, padx=10, pady=5, ipadx=inner_padding, ipady=inner_padding)
-        self.button_cancel = butt
+        if add_cancel:
+            butt = self.add_button(parent_frame, text="Cancel", command=partial(self.do_cancel))
+            self.button_cancel = butt
 
-        butt = ttk.Button(parent_frame, text="Exit", command=partial(self.do_exit))
-        butt.pack(fill=tk.X, padx=10, pady=5, ipadx=inner_padding, ipady=inner_padding)
-        self.button_exit = butt
+        if add_exit:
+            self.add_exit_button(parent_frame)
 
         return button_list
 

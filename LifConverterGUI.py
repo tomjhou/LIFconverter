@@ -20,6 +20,7 @@ class gui(basic_gui):
         super().__init__()
         self.var_recursive = tk.BooleanVar(self.root)
         self.var_rotate180 = tk.BooleanVar(self.root, True)
+        self.var_CMY_separate = tk.BooleanVar(self.root, True)
         self.skip_string_var = tk.StringVar(self.root, "skip")
         self.format_string_var = tk.StringVar(self.root, LifClass.Options.Format.jpg.name)
         self.conversion_options = LifClass.Options()
@@ -37,6 +38,7 @@ class gui(basic_gui):
 
         self.conversion_options.overwrite_existing = (self.skip_string_var.get() == "all")
         self.conversion_options.rotate180 = self.var_rotate180.get()
+        self.conversion_options.separate_CMY = self.var_CMY_separate.get()
 
     def get_file_list(self, folder_path):
 
@@ -217,7 +219,9 @@ class gui(basic_gui):
         values = {"Convert single LIF file": self.start_convert_file,
                   "Convert folder": self.start_convert_folder}
 
-        self.button_list = self.add_boxed_button_column(frame1b, values, side=tk.LEFT, fill=tk.X)
+        self.button_list = self.add_boxed_button_column(frame1b, values,
+                                                        side=tk.LEFT, fill=tk.X,
+                                                        add_exit=False)
 
         # Radio buttons for output options
         values = {"JPG (smallest files, highly recommended)": LifClass.Options.Format.jpg,
@@ -229,8 +233,11 @@ class gui(basic_gui):
                                                       padx=15, pady=8,
                                                       text="Output options")
 
-        cb = ttk.Checkbutton(f, text="Rotate 180 degrees?", variable=self.var_rotate180)
-        cb.pack(before=elt, side=tk.TOP, anchor=tk.NW, padx=10, pady=(6, 3))
+        cb1 = ttk.Checkbutton(f, text="Put magenta/cyan/yellow channels into separate file from RGB?",
+                              variable=self.var_CMY_separate)
+        cb1.pack(before=elt, side=tk.TOP, anchor=tk.NW, padx=10, pady=(6, 3))
+        cb2 = ttk.Checkbutton(f, text="Rotate 180 degrees?", variable=self.var_rotate180)
+        cb2.pack(before=cb1, side=tk.TOP, anchor=tk.NW, padx=10, pady=(6, 3))
 
         # Radio buttons for folder options
         values = {"Skip already converted files (recommended)": "skip",
@@ -252,8 +259,10 @@ class gui(basic_gui):
 
         self.status.add(self.root, values)
 
-        b = tk.Button(self.root, text="Open output folder", command=self.do_open_output_folder)
-        b.pack(side=tk.TOP, padx=15, pady=(1, 10), ipadx=20, ipady=10)
+        b = ttk.Button(self.root, text="Open output folder", command=self.do_open_output_folder)
+        b.pack(side=tk.TOP, padx=15, pady=(5, 5), ipadx=15, ipady=12)
+
+        self.add_exit_button(self.root, fill=False)
 
         # Place in top left corner of screen
         self.root.geometry("+%d+%d" % (PADDING_PIXELS, PADDING_PIXELS))
