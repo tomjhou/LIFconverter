@@ -216,17 +216,17 @@ class gui(basic_gui):
         frame1b.pack(side=tk.TOP, fill=tk.X, padx=2, pady=2)
 
         # Dictionary to create multiple buttons
-        values = {"Convert single LIF file": self.start_convert_file,
-                  "Convert folder": self.start_convert_folder}
+        values = [("Convert single LIF file", self.start_convert_file),
+                  ("Convert folder", self.start_convert_folder)]
 
         self.button_list = self.add_boxed_button_column(frame1b, values,
                                                         side=tk.LEFT, fill=tk.X,
                                                         add_exit=False)
 
         # Radio buttons for output options
-        values = {"JPG (smallest files, highly recommended)": LifClass.Options.Format.jpg,
-                  "TIFF": LifClass.Options.Format.tiff,
-                  "XML (extracts header info only)": LifClass.Options.Format.xml}
+        values = [("JPG (smallest files, highly recommended)", LifClass.Options.Format.jpg),
+                  ("TIFF", LifClass.Options.Format.tiff),
+                  ("XML (extracts header info only)", LifClass.Options.Format.xml)]
 
         (f, elt) = self.add_boxed_radio_button_column(frame1b, values, backing_var=self.format_string_var,
                                                       side=tk.TOP, fill=tk.X,
@@ -240,8 +240,8 @@ class gui(basic_gui):
         cb2.pack(before=cb1, side=tk.TOP, anchor=tk.NW, padx=10, pady=(6, 3))
 
         # Radio buttons for folder options
-        values = {"Skip already converted files (recommended)": "skip",
-                  "Convert all (overwrites old output)": "all"}
+        values = [("Skip already converted files (recommended)", "skip"),
+                  ("Convert all (overwrites old output)", "all")]
 
         (f, elt) = self.add_boxed_radio_button_column(frame1b, values, backing_var=self.skip_string_var,
                                                       side=tk.TOP, fill=tk.X,

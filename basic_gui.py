@@ -159,11 +159,14 @@ class basic_gui:
 
         pady = 6
         first_elt = None
-        for (text, value) in button_names.items():
-            if isinstance(value, enum.Enum):
+        for v in button_names:
+            if isinstance(v[1], enum.Enum):
                 # If enumerated type, then convert to string
-                value = value.name
-            b = tk.Radiobutton(parent_frame, text=text, variable=backing_var, value=value, command=command)
+                value = v[1].name
+            else:
+                value = v[1]
+
+            b = tk.Radiobutton(parent_frame, text=v[0], variable=backing_var, value=value, command=command)
             b.pack(side=tk.TOP, anchor='w', pady=(pady, 0), padx=10)
 
             if first_elt is None:
@@ -202,8 +205,8 @@ class basic_gui:
 
         button_list = []
         button_index = 0
-        for (text, value) in button_names.items():
-            butt = self.add_button(parent_frame, text=text, command=partial(self.handle_button, value))
+        for v in button_names:
+            butt = self.add_button(parent_frame, text=v[0], command=partial(self.handle_button, v[1]))
             button_list.append(butt)
             button_index += 1
 
