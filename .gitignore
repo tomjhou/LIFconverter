@@ -1,9 +1,16 @@
 #
 # If you add .idea files to .gitignore after they are already tracked, you need to
-# do the following to stop tracking existing files:
+# use git rm --cached to stop tracking files. This will remove them from staging area
+# without affecting files currently in directory.
+#
+# git rm --cached config.ini
+#
+# You can also recursively remove foldrs and subfolders, e.g.:
 #
 # git rm -r --cached .idea
 #
+
+
 
 /__pycache__
 /__pycache__/
