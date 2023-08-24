@@ -20,9 +20,14 @@ class gui(basic_gui):
         super().__init__()
         self.var_recursive = tk.BooleanVar(self.root)
         self.var_rotate180 = tk.BooleanVar(self.root, True)
-        self.var_CMY_separate = tk.BooleanVar(self.root, True)
+
+        # This is set by radio buttons in folder options
         self.skip_string_var = tk.StringVar(self.root, "skip")
-        self.format_string_var = tk.StringVar(self.root, LifClass.Options.Format.jpg.name)
+        # This is set by radio buttons in file format
+        self.format1_string_var = tk.StringVar(self.root, LifClass.Options.Format.jpg.name)
+        # This is set by radio buttons in color format
+        self.format2_string_var = tk.StringVar(self.root, "RGB_CMY")
+
         self.conversion_options = LifClass.Options()
         self.file_path = None
 
@@ -33,12 +38,17 @@ class gui(basic_gui):
 
     def get_options_from_gui(self):
 
-        v = self.format_string_var.get()
-        self.conversion_options.convert_format = LifClass.Options.Format[v]
+        v1 = self.format1_string_var.get()
+        v2 = self.format2_string_var.get()
+
+        # Determine whether to export jpg, tif, or xml
+        self.conversion_options.convert_format = LifClass.Options.Format[v1]
 
         self.conversion_options.overwrite_existing = (self.skip_string_var.get() == "all")
         self.conversion_options.rotate180 = self.var_rotate180.get()
-        self.conversion_options.separate_CMY = self.var_CMY_separate.get()
+
+        self.conversion_options.color_format = LifClass.Options.ColorOptions[v2]
+#        self.conversion_options.separate_CMY = self.var_CMY_separate.get()
 
     def get_file_list(self, folder_path):
 
@@ -228,16 +238,23 @@ class gui(basic_gui):
                   ("TIFF", LifClass.Options.Format.tiff),
                   ("XML (extracts header info only)", LifClass.Options.Format.xml)]
 
-        (f, elt) = self.add_boxed_radio_button_column(frame1b, values, backing_var=self.format_string_var,
+        (f, elt) = self.add_boxed_radio_button_column(frame1b, values, backing_var=self.format1_string_var,
                                                       side=tk.TOP, fill=tk.X,
                                                       padx=15, pady=8,
                                                       text="Output options")
 
-        cb1 = ttk.Checkbutton(f, text="Put magenta/cyan/yellow channels into separate file from RGB?",
-                              variable=self.var_CMY_separate)
-        cb1.pack(before=elt, side=tk.TOP, anchor=tk.NW, padx=10, pady=(6, 3))
         cb2 = ttk.Checkbutton(f, text="Rotate 180 degrees?", variable=self.var_rotate180)
-        cb2.pack(before=cb1, side=tk.TOP, anchor=tk.NW, padx=10, pady=(6, 3))
+        cb2.pack(before=elt, side=tk.TOP, anchor=tk.NW, padx=10, pady=(6, 3))
+
+        # Radio buttons for color options
+        values = [("Put all color layers into single file", "all"),
+                  ("Put RGB into single file, CMY into separate file (recommended)", "RGB_CMY"),
+                  ("Each color in separate file (not implemented - if selected, all colors will be in one file)", "separate")]
+
+        (f, elt) = self.add_boxed_radio_button_column(frame1b, values, backing_var=self.format2_string_var,
+                                                      side=tk.TOP, fill=tk.X,
+                                                      padx=15, pady=8,
+                                                      text="Color layer options")
 
         # Radio buttons for folder options
         values = [("Skip already converted files (recommended)", "skip"),
@@ -246,7 +263,7 @@ class gui(basic_gui):
         (f, elt) = self.add_boxed_radio_button_column(frame1b, values, backing_var=self.skip_string_var,
                                                       side=tk.TOP, fill=tk.X,
                                                       padx=15, pady=8,
-                                                      text="Folder convert options")
+                                                      text="File convert options")
 
         cb = ttk.Checkbutton(f, text="Include sub-folders?", variable=self.var_recursive)
         cb.pack(before=elt, side=tk.TOP, anchor=tk.NW, padx=10, pady=(6, 3))

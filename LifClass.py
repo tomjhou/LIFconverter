@@ -23,12 +23,18 @@ class LifClass:
             jpg = 1
             tiff = 2
 
+        class ColorOptions(enum.Enum):
+            all_together = 0
+            RGB_CMY = 1
+            all_separate = 2
+
         overwrite_existing = True
         rotate180 = True
-        separate_CMY = True # Put cyan, magenta and yellow into their own file if needed to avoid overlap
+#        separate_CMY = True  # Put cyan, magenta and yellow into their own file if needed to avoid overlap
 
         def __init__(self):
             self.convert_format = self.Format.jpg
+            self.color_format = self.ColorOptions.RGB_CMY
 
     # The following variables are cumulative, i.e. if you convert more than one file with the same object
     # they will not be reset between conversions.
@@ -314,6 +320,8 @@ class LifClass:
         if self.stopFlag.check():
             raise self.UserCanceled
 
+        separate_CMY = self.conversion_options.ColorOptions == self.Options.ColorOptions.RGB_CMY
+
         if img_magenta is not None:
             if img_red is None and img_blue is None:
                 # Neither red nor blue channels already exist, so just write normally
@@ -326,7 +334,7 @@ class LifClass:
                 # If red already exists, and blue is empty, then put into blue
                 img_blue = img_magenta
             else:
-                if self.conversion_options.separate_CMY:
+                if separate_CMY:
                     make_magenta_file = True
                 else:
                     # Both red and blue exist ... just bite the bullet and add it to the existing colors,
@@ -357,7 +365,7 @@ class LifClass:
                 img_blue = img_cyan
             else:
                 # Have both blue and cyan channels. Merge cyan into main image, at reduced brightness
-                if self.conversion_options.separate_CMY:
+                if separate_CMY:
                     make_cyan_file = True
                 else:
                     # If we have both blue and cyan, then merge it into green and blue channels.
@@ -386,7 +394,7 @@ class LifClass:
                 print('    Converting yellow to green, to avoid overlap with red')
                 img_green = img_yellow
             else:
-                if self.conversion_options.separate_CMY:
+                if separate_CMY:
                     make_yellow_file = True
                 else:
                     # Have both red and green.
@@ -419,7 +427,7 @@ class LifClass:
 
         self.write_file(merged, img.name, bit_depth)
 
-        if self.conversion_options.separate_CMY:
+        if separate_CMY:
             img_zeros = np.zeros(d, dtype=pixel_type_string)
             if make_cyan_file:
                 self.write_file(np.dstack((img_cyan, img_cyan, img_zeros)), img.name, bit_depth, suffix="cyan")
