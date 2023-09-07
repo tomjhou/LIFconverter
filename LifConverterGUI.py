@@ -247,9 +247,9 @@ class gui(basic_gui):
         cb2.pack(before=elt, side=tk.TOP, anchor=tk.NW, padx=10, pady=(6, 3))
 
         # Radio buttons for color options
-        values = [("Put all color layers into single file", "all"),
+        values = [("Put all color layers into single file", "all_together"),
                   ("Put RGB into single file, CMY into separate file (recommended)", "RGB_CMY"),
-                  ("Each color in separate file (not implemented - if selected, all colors will be in one file)", "separate")]
+                  ("Each color in separate file", "all_separate")]
 
         (f, elt) = self.add_boxed_radio_button_column(frame1b, values, backing_var=self.format2_string_var,
                                                       side=tk.TOP, fill=tk.X,

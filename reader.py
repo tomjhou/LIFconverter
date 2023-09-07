@@ -6,7 +6,7 @@ from collections import namedtuple
 from functools import reduce
 import xml.etree.ElementTree as ET
 
-from PIL import Image
+from PIL import Image   # Install Pillow rather than PIL
 
 LIF_MAGIC = b"\x70\x00\x00\x00"
 
