@@ -234,8 +234,8 @@ class gui(basic_gui):
                                                         add_exit=False)
 
         # Radio buttons for output options
-        values = [("JPG (smallest files, highly recommended)", LifClass.Options.Format.jpg),
-                  ("TIFF", LifClass.Options.Format.tiff),
+        values = [("JPG (smallest files)", LifClass.Options.Format.jpg),
+                  ("TIFF (highest quality - best for importing to Illustrator)", LifClass.Options.Format.tiff),
                   ("XML (extracts header info only)", LifClass.Options.Format.xml)]
 
         (f, elt) = self.add_boxed_radio_button_column(frame1b, values, backing_var=self.format1_string_var,
@@ -249,7 +249,7 @@ class gui(basic_gui):
         # Radio buttons for color options
         values = [  # ("Put all color layers into single file", "all_together"),
                   ("Merge RGB into single file (CMY will be in separate files)", "RGB_CMY"),
-                  ("Each color in separate file", "all_separate")]
+                  ("Each color in separate file (best for importing into Illustrator)", "all_separate")]
 
         (f, elt) = self.add_boxed_radio_button_column(frame1b, values, backing_var=self.format2_string_var,
                                                       side=tk.TOP, fill=tk.X,
