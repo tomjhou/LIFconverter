@@ -26,7 +26,9 @@ class gui(basic_gui):
         # This is set by radio buttons in file format
         self.format1_string_var = tk.StringVar(self.root, LifClass.Options.Format.jpg.name)
         # This is set by radio buttons in color format
-        self.format2_string_var = tk.StringVar(self.root, "RGB_CMY")
+        self.format2_string_var = tk.StringVar(self.root, LifClass.Options.ColorOptions.RGB_CMY.name)  # "RGB_CMY")
+        # This is set by radio buttons in z-stack format
+        self.format3_string_var = tk.StringVar(self.root, LifClass.Options.ZStackOptions.max_project.name)
 
         self.conversion_options = LifClass.Options()
         self.file_path = None
@@ -40,6 +42,7 @@ class gui(basic_gui):
 
         v1 = self.format1_string_var.get()
         v2 = self.format2_string_var.get()
+        v3 = self.format3_string_var.get()
 
         # Determine whether to export jpg, tif, or xml
         self.conversion_options.convert_format = LifClass.Options.Format[v1]
@@ -48,7 +51,8 @@ class gui(basic_gui):
         self.conversion_options.rotate180 = self.var_rotate180.get()
 
         self.conversion_options.color_format = LifClass.Options.ColorOptions[v2]
-#        self.conversion_options.separate_CMY = self.var_CMY_separate.get()
+
+        self.conversion_options.zstack_format = LifClass.Options.ZStackOptions[v3]
 
     def get_file_list(self, folder_path):
 
@@ -225,7 +229,11 @@ class gui(basic_gui):
         frame1b = tk.Frame(frame1, borderwidth=5)
         frame1b.pack(side=tk.TOP, fill=tk.X, padx=2, pady=2)
 
-        # Dictionary to create multiple buttons
+        ##################################################
+        #
+        #    List of buttons at left top panel
+        #
+        ##################################################
         values = [("Convert single LIF file", self.start_convert_file),
                   ("Convert folder", self.start_convert_folder)]
 
@@ -233,7 +241,13 @@ class gui(basic_gui):
                                                         side=tk.LEFT, fill=tk.X,
                                                         add_exit=False)
 
-        # Radio buttons for output options
+        ##################################################
+        #
+        #    Radio buttons at top right
+        #
+        ##################################################
+
+        # ****** Output options
         values = [("JPG (smallest files)", LifClass.Options.Format.jpg),
                   ("TIFF (highest quality - best for importing to Illustrator)", LifClass.Options.Format.tiff),
                   ("XML (extracts header info only)", LifClass.Options.Format.xml)]
@@ -246,17 +260,26 @@ class gui(basic_gui):
         cb2 = ttk.Checkbutton(f, text="Rotate 180 degrees?", variable=self.var_rotate180)
         cb2.pack(before=elt, side=tk.TOP, anchor=tk.NW, padx=10, pady=(6, 3))
 
-        # Radio buttons for color options
+        # ****** Color layer options
         values = [  # ("Put all color layers into single file", "all_together"),
-                  ("Merge RGB into single file (CMY will be in separate files)", "RGB_CMY"),
-                  ("Each color in separate file (best for importing into Illustrator)", "all_separate")]
+                  ("Merge RGB into single file (CMY will be in separate files)", LifClass.Options.ColorOptions.RGB_CMY),
+                  ("Each color in separate file (best for importing into Illustrator)", LifClass.Options.ColorOptions.all_separate)]
 
         (f, elt) = self.add_boxed_radio_button_column(frame1b, values, backing_var=self.format2_string_var,
                                                       side=tk.TOP, fill=tk.X,
                                                       padx=15, pady=8,
                                                       text="Color layer options")
 
-        # Radio buttons for folder options
+        # ****** Z-stack options
+        values = [("Generate max projection", LifClass.Options.ZStackOptions.max_project),
+                  ("Generate separate image for each z-stack layer", LifClass.Options.ZStackOptions.separate)]
+
+        (f, elt) = self.add_boxed_radio_button_column(frame1b, values, backing_var=self.format3_string_var,
+                                                      side=tk.TOP, fill=tk.X,
+                                                      padx=15, pady=8,
+                                                      text="How to handle z-stacks?")
+
+        # ****** File convert options
         values = [("Skip already converted files (recommended)", "skip"),
                   ("Convert all (overwrites old output)", "all")]
 
@@ -271,10 +294,22 @@ class gui(basic_gui):
         frame1a = tk.Frame(frame1, borderwidth=5)
         frame1a.pack(side=tk.BOTTOM, fill=tk.X, padx=15, pady=5)
 
+        ##################################################
+        #
+        #    Status text boxes at bottom
+        #
+        ##################################################
+
         values = ["Current file:",
                   "Status:"]
 
         self.status.add(self.root, values)
+
+        ##################################################
+        #
+        #    Open folder and Exit buttons at bottom
+        #
+        ##################################################
 
         b = ttk.Button(self.root, text="Open output folder", command=self.do_open_output_folder)
         b.pack(side=tk.TOP, padx=15, pady=(5, 5), ipadx=15, ipady=12)

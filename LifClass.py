@@ -28,6 +28,10 @@ class LifClass:
             RGB_CMY = 1
             all_separate = 2
 
+        class ZStackOptions(enum.Enum):
+            max_project = 0
+            separate = 1
+
         overwrite_existing = True
         rotate180 = True
 #        separate_CMY = True  # Put cyan, magenta and yellow into their own file if needed to avoid overlap
@@ -35,6 +39,7 @@ class LifClass:
         def __init__(self):
             self.convert_format = self.Format.jpg
             self.color_format = self.ColorOptions.RGB_CMY
+            self.zstack_format = self.ZStackOptions.max_project
 
     # The following variables are cumulative, i.e. if you convert more than one file with the same object
     # they will not be reset between conversions.
@@ -217,244 +222,258 @@ class LifClass:
 
         separate_CMY = self.conversion_options.color_format == self.Options.ColorOptions.RGB_CMY
         separate_ALL = self.conversion_options.color_format == self.Options.ColorOptions.all_separate
+        do_max_project = self.conversion_options.zstack_format == self.Options.ZStackOptions.max_project
 
-        for m in range(n_chan):
+        if do_max_project:
+            export_z_loop_count = 1
+        else:
+            export_z_loop_count = z_depth
 
-            if self.stopFlag.check():
-                raise self.UserCanceled
+        for z in range(export_z_loop_count):
 
-            color = xml_chans[m].attrib["LUTName"]
-            print(f'        Generating image for channel {color}: ')
-            if (n_chan - m) <= len(xml_scales):
-                xml_scale = xml_scales[-(n_chan - m)]
-                white_value = xml_scale.attrib["WhiteValue"]
-                black_value = xml_scale.attrib["BlackValue"]
-            else:
-                # Some images, like snapshots, may not have ChannelScalingInfo. Just use defaults.
-                white_value = 1
-                black_value = 0
+            for m in range(n_chan):
 
-            white_value = float(white_value)
-            black_value = float(black_value)
+                if self.stopFlag.check():
+                    raise self.UserCanceled
 
-            start = time.time()
+                color = xml_chans[m].attrib["LUTName"]
+                print(f'        Generating image for channel {color}: ')
+                if (n_chan - m) <= len(xml_scales):
+                    xml_scale = xml_scales[-(n_chan - m)]
+                    white_value = xml_scale.attrib["WhiteValue"]
+                    black_value = xml_scale.attrib["BlackValue"]
+                else:
+                    # Some images, like snapshots, may not have ChannelScalingInfo. Just use defaults.
+                    white_value = 1
+                    black_value = 0
 
-            if z_depth > 1:
-                print(f'        Found z-stack of depth {z_depth}, will scan all images and select brightest value for '
-                      f'each pixel (which may come from different z-planes).')
+                white_value = float(white_value)
+                black_value = float(black_value)
 
-                ar = None
+                start = time.time()
 
-                for k in range(z_depth):
-                    # Keep GUI responsive and check for user interruption
-                    if self.stopFlag.check():
-                        raise self.UserCanceled
-                    print('.', end="")
-                    f = img.get_frame(z=k, t=0, c=m)
-                    if k == 0:
-                        ar = np.array(f)
-                    else:
-                        ar = np.maximum(ar, np.array(f))
-                print()
-            else:
-                # Access a specific item
-                f = img.get_frame(z=0, t=0, c=m)
-                ar = np.array(f)
+                # Access a specific item, after possibly calculating z-stack
+                if z_depth > 1 and do_max_project:
+                    print(f'        Found z-stack of depth {z_depth}, will scan all images and select brightest value for '
+                          f'each pixel (which may come from different z-planes).')
 
-            # Iterate over different items
-            # frame_list   = [i for i in img_0.get_iter_t(c=0, z=0)]
-            # z_list       = [i for i in img_0.get_iter_z(t=0, c=0)]
-            # channel_list = [i for i in img_0.get_iter_c(t=0, z=0)]
+                    ar = None
 
-            d = ar.shape
+                    for k in range(z_depth):
+                        # Keep GUI responsive and check for user interruption
+                        if self.stopFlag.check():
+                            raise self.UserCanceled
+                        print('.', end="")
+                        f = img.get_frame(z=k, t=0, c=m)
+                        if k == 0:
+                            ar = np.array(f)
+                        else:
+                            ar = np.maximum(ar, np.array(f))
+                    print()
+                else:
+                    f = img.get_frame(z=z, t=0, c=m)
+                    ar = np.array(f)
 
-            scale = 1.0 / (white_value - black_value)
+                # Iterate over different items
+                # frame_list   = [i for i in img_0.get_iter_t(c=0, z=0)]
+                # z_list       = [i for i in img_0.get_iter_z(t=0, c=0)]
+                # channel_list = [i for i in img_0.get_iter_c(t=0, z=0)]
 
-            offset1 = round(black_value * max_val)  # Using round() because that seems to match LASX
+                d = ar.shape
 
-            # Bin several rows together to speed up processing. This is more advantageous
-            # if rows are small. As they get bigger, the advantage diminishes, and may even
-            # reverse for unknown reasons (memory limit?)
-            chunk_h = img.dims.x  # * bit_depth / 8
-            if chunk_h < 4000:
-                chunk_v = 32
-            elif chunk_h < 8000:
-                chunk_v = 16
-            elif chunk_h < 16000:
-                chunk_v = 8
-            elif chunk_h < 32000:
-                chunk_v = 4
-            else:
-                chunk_v = 2
+                scale = 1.0 / (white_value - black_value)
 
-            row = 0
+                offset1 = round(black_value * max_val)  # Using round() because that seems to match LASX
 
-            # Rescale image intensity with respect to black_level and white_level.
-            while row < d[0]:
-                if row + chunk_v > d[0]:
-                    # Final chunk may be smaller than the previous ones.
-                    chunk_v = d[0] - row
-                # Convert one chunk to float
-                one_row = ar[row:row + chunk_v, ].astype(float)
-                one_row = (one_row - offset1) * scale
-                # Truncate underflow and overflow values.
-                one_row[one_row < 0] = 0
-                one_row[one_row > max_val] = max_val
-                # Demote back to original data type and rewrite
-                ar[row:row + chunk_v, ] = one_row.astype(pixel_type)
-                row += chunk_v
+                # Bin several rows together to speed up processing. This is more advantageous
+                # if rows are small. As they get bigger, the advantage diminishes, and may even
+                # reverse for unknown reasons (memory limit?)
+                chunk_h = img.dims.x  # * bit_depth / 8
+                if chunk_h < 4000:
+                    chunk_v = 32
+                elif chunk_h < 8000:
+                    chunk_v = 16
+                elif chunk_h < 16000:
+                    chunk_v = 8
+                elif chunk_h < 32000:
+                    chunk_v = 4
+                else:
+                    chunk_v = 2
 
-            end = time.time()
-            print(f'          Completed in {end - start} seconds.')
+                row = 0
 
-            if separate_ALL:
-                img_zeros = np.zeros(d, dtype=pixel_type_string)
+                # Rescale image intensity with respect to black_level and white_level.
+                while row < d[0]:
+                    if row + chunk_v > d[0]:
+                        # Final chunk may be smaller than the previous ones.
+                        chunk_v = d[0] - row
+                    # Convert one chunk to float
+                    one_row = ar[row:row + chunk_v, ].astype(float)
+                    one_row = (one_row - offset1) * scale
+                    # Truncate underflow and overflow values.
+                    one_row[one_row < 0] = 0
+                    one_row[one_row > max_val] = max_val
+                    # Demote back to original data type and rewrite
+                    ar[row:row + chunk_v, ] = one_row.astype(pixel_type)
+                    row += chunk_v
+
+                end = time.time()
+                print(f'          Completed in {end - start} seconds.')
+
+                if separate_ALL:
+                    img_zeros = np.zeros(d, dtype=pixel_type_string)
+                    if color == "Green":
+                        self.write_file(np.dstack((img_zeros, ar, img_zeros)), img.name, bit_depth, suffix="green")
+                    elif color == "Red":
+                        self.write_file(np.dstack((img_zeros, img_zeros, ar)), img.name, bit_depth, suffix="red")
+                    elif color == "Blue":
+                        self.write_file(np.dstack((ar, img_zeros, img_zeros)), img.name, bit_depth, suffix="blue")
+                    elif color == "Cyan":
+                        self.write_file(np.dstack((ar, ar, img_zeros)), img.name, bit_depth, suffix="cyan")
+                    elif color == "Magenta":
+                        self.write_file(np.dstack((ar, img_zeros, ar)), img.name, bit_depth, suffix="magenta")
+                    elif color == "Yellow":
+                        self.write_file(np.dstack((img_zeros, ar, ar)), img.name, bit_depth, suffix="yellow")
+
+                    continue
+
                 if color == "Green":
-                    self.write_file(np.dstack((img_zeros, ar, img_zeros)), img.name, bit_depth, suffix="green")
+                    img_green = ar
                 elif color == "Red":
-                    self.write_file(np.dstack((img_zeros, img_zeros, ar)), img.name, bit_depth, suffix="red")
+                    img_red = ar
                 elif color == "Blue":
-                    self.write_file(np.dstack((ar, img_zeros, img_zeros)), img.name, bit_depth, suffix="blue")
+                    img_blue = ar
                 elif color == "Cyan":
-                    self.write_file(np.dstack((ar, ar, img_zeros)), img.name, bit_depth, suffix="cyan")
+                    img_cyan = ar
                 elif color == "Magenta":
-                    self.write_file(np.dstack((ar, img_zeros, ar)), img.name, bit_depth, suffix="magenta")
+                    img_magenta = ar
                 elif color == "Yellow":
-                    self.write_file(np.dstack((img_zeros, ar, ar)), img.name, bit_depth, suffix="yellow")
+                    img_yellow = ar
 
-                continue
+            if not separate_ALL:
+                # Write merged file
+                if self.stopFlag.check():
+                    raise self.UserCanceled
 
-            if color == "Green":
-                img_green = ar
-            elif color == "Red":
-                img_red = ar
-            elif color == "Blue":
-                img_blue = ar
-            elif color == "Cyan":
-                img_cyan = ar
-            elif color == "Magenta":
-                img_magenta = ar
-            elif color == "Yellow":
-                img_yellow = ar
-
-        if not separate_ALL:
-            # Write merged file
-            if self.stopFlag.check():
-                raise self.UserCanceled
-
-            if img_magenta is not None:
-                if img_red is None and img_blue is None:
-                    # Neither red nor blue channels already exist, so just write normally
-                    img_red = img_magenta
-                    img_blue = img_magenta
-                elif img_red is None and img_blue is not None:
-                    # If blue already exists, but red is empty, then just put this into red channel
-                    img_red = img_magenta
-                elif img_blue is None and img_red is not None:
-                    # If red already exists, and blue is empty, then put into blue
-                    img_blue = img_magenta
-                else:
-                    if separate_CMY:
-                        make_magenta_file = True
+                if img_magenta is not None:
+                    if img_red is None and img_blue is None:
+                        # Neither red nor blue channels already exist, so just write normally
+                        img_red = img_magenta
+                        img_blue = img_magenta
+                    elif img_red is None and img_blue is not None:
+                        # If blue already exists, but red is empty, then just put this into red channel
+                        img_red = img_magenta
+                    elif img_blue is None and img_red is not None:
+                        # If red already exists, and blue is empty, then put into blue
+                        img_blue = img_magenta
                     else:
-                        # Both red and blue exist ... just bite the bullet and add it to the existing colors,
-                        # at reduced intensity
-                        im = img_magenta.astype(np.uint32) >> 1  # divide by two
-                        img_red = img_red.astype(np.uint32) + im
-                        img_blue = img_blue.astype(np.uint32) + im
+                        if separate_CMY:
+                            make_magenta_file = True
+                        else:
+                            # Both red and blue exist ... just bite the bullet and add it to the existing colors,
+                            # at reduced intensity
+                            im = img_magenta.astype(np.uint32) >> 1  # divide by two
+                            img_red = img_red.astype(np.uint32) + im
+                            img_blue = img_blue.astype(np.uint32) + im
 
-                        img_red[img_red > max_val] = max_val
-                        img_blue[img_blue > max_val] = max_val
+                            img_red[img_red > max_val] = max_val
+                            img_blue[img_blue > max_val] = max_val
 
-                        # Have to "demote" type back down to original 8 or 16-bit.
-                        img_red = img_red.astype(pixel_type)
-                        img_blue = img_blue.astype(pixel_type)
+                            # Have to "demote" type back down to original 8 or 16-bit.
+                            img_red = img_red.astype(pixel_type)
+                            img_blue = img_blue.astype(pixel_type)
 
-            if img_cyan is not None:
-                if img_green is None and img_blue is None:
-                    # Neither green nor blue exists, so write normally
-                    img_green = img_cyan
-                    img_blue = img_cyan
-                elif img_blue is None:
-                    # Green channel is occupied but not blue. Put cyan channel in blue only
-                    print('    Converting cyan to blue, to avoid overlap with green channel')
-                    img_blue = img_cyan
-                elif img_green is None:
-                    # Blue channel is occupied but not green. Put cyan channel in green only
-                    print('    Converting cyan to green, to avoid overlap with blue')
-                    img_blue = img_cyan
-                else:
-                    # Have both blue and cyan channels. Merge cyan into main image, at reduced brightness
-                    if separate_CMY:
-                        make_cyan_file = True
+                if img_cyan is not None:
+                    if img_green is None and img_blue is None:
+                        # Neither green nor blue exists, so write normally
+                        img_green = img_cyan
+                        img_blue = img_cyan
+                    elif img_blue is None:
+                        # Green channel is occupied but not blue. Put cyan channel in blue only
+                        print('    Converting cyan to blue, to avoid overlap with green channel')
+                        img_blue = img_cyan
+                    elif img_green is None:
+                        # Blue channel is occupied but not green. Put cyan channel in green only
+                        print('    Converting cyan to green, to avoid overlap with blue')
+                        img_blue = img_cyan
                     else:
-                        # If we have both blue and cyan, then merge it into green and blue channels.
-                        # Note: we have to temporarily promote datatype to 32-bit, or else numbers will overflow,
-                        # and then demote back to original datatype.
-                        im = img_cyan.astype(np.uint32) >> 1  # divide by two
-                        img_green = img_green.astype(np.uint32) + im
-                        img_blue = img_blue.astype(np.uint32) + im
+                        # Have both blue and cyan channels. Merge cyan into main image, at reduced brightness
+                        if separate_CMY:
+                            make_cyan_file = True
+                        else:
+                            # If we have both blue and cyan, then merge it into green and blue channels.
+                            # Note: we have to temporarily promote datatype to 32-bit, or else numbers will overflow,
+                            # and then demote back to original datatype.
+                            im = img_cyan.astype(np.uint32) >> 1  # divide by two
+                            img_green = img_green.astype(np.uint32) + im
+                            img_blue = img_blue.astype(np.uint32) + im
 
-                        img_green[img_green > max_val] = max_val
-                        img_blue[img_blue > max_val] = max_val
+                            img_green[img_green > max_val] = max_val
+                            img_blue[img_blue > max_val] = max_val
 
-                        # Have to "demote" type back down to original 8 or 16-bit.
-                        img_green = img_green.astype(pixel_type)
-                        img_blue = img_blue.astype(pixel_type)
+                            # Have to "demote" type back down to original 8 or 16-bit.
+                            img_green = img_green.astype(pixel_type)
+                            img_blue = img_blue.astype(pixel_type)
 
-            if img_yellow is not None:
-                if img_red is None and img_green is None:
-                    # Neither red nor green channel exists, just write normally.
-                    img_red = img_yellow
-                    img_green = img_yellow
-                elif img_red is None:
-                    print('    Converting yellow to red, to avoid overlap with green')
-                    img_red = img_yellow
-                elif img_green is None:
-                    print('    Converting yellow to green, to avoid overlap with red')
-                    img_green = img_yellow
-                else:
-                    if separate_CMY:
-                        make_yellow_file = True
+                if img_yellow is not None:
+                    if img_red is None and img_green is None:
+                        # Neither red nor green channel exists, just write normally.
+                        img_red = img_yellow
+                        img_green = img_yellow
+                    elif img_red is None:
+                        print('    Converting yellow to red, to avoid overlap with green')
+                        img_red = img_yellow
+                    elif img_green is None:
+                        print('    Converting yellow to green, to avoid overlap with red')
+                        img_green = img_yellow
                     else:
-                        # Have both red and green.
-                        im = img_yellow.astype(np.uint32) >> 1  # divide by two
-                        img_green = img_green.astype(np.uint32) + im
-                        img_red = img_red.astype(np.uint32) + im
+                        if separate_CMY:
+                            make_yellow_file = True
+                        else:
+                            # Have both red and green.
+                            im = img_yellow.astype(np.uint32) >> 1  # divide by two
+                            img_green = img_green.astype(np.uint32) + im
+                            img_red = img_red.astype(np.uint32) + im
 
-                        img_green[img_green > max_val] = max_val
-                        img_red[img_red > max_val] = max_val
+                            img_green[img_green > max_val] = max_val
+                            img_red[img_red > max_val] = max_val
 
-                        # Have to "demote" type back down to original 8 or 16-bit.
-                        img_green = img_green.astype(pixel_type)
-                        img_red = img_red.astype(pixel_type)
+                            # Have to "demote" type back down to original 8 or 16-bit.
+                            img_green = img_green.astype(pixel_type)
+                            img_red = img_red.astype(pixel_type)
 
-            if img_red is None:
-                img_red = np.zeros(d, dtype=pixel_type_string)
-            if img_green is None:
-                img_green = np.zeros(d, dtype=pixel_type_string)
-            if img_blue is None:
-                img_blue = np.zeros(d, dtype=pixel_type_string)
+                if img_red is None:
+                    img_red = np.zeros(d, dtype=pixel_type_string)
+                if img_green is None:
+                    img_green = np.zeros(d, dtype=pixel_type_string)
+                if img_blue is None:
+                    img_blue = np.zeros(d, dtype=pixel_type_string)
 
-            if self.stopFlag.check():
-                raise self.UserCanceled
+                if self.stopFlag.check():
+                    raise self.UserCanceled
 
-            # imwrite requires BGR order, backwards from usual RGB
-            merged = np.dstack((img_blue, img_green, img_red))
+                # imwrite requires BGR order, backwards from usual RGB
+                merged = np.dstack((img_blue, img_green, img_red))
 
-            if self.conversion_options.rotate180:
-                merged = np.flip(merged, (0, 1))
+                if self.conversion_options.rotate180:
+                    merged = np.flip(merged, (0, 1))
 
-            self.write_file(merged, img.name, bit_depth)
+                if export_z_loop_count > 1:
+                    # Append z layer number to filename
+                    img_name = img.name + "_Z" + str(z+1)
+                else:
+                    img_name = img.name
 
-            if separate_CMY:
-                img_zeros = np.zeros(d, dtype=pixel_type_string)
-                if make_cyan_file:
-                    self.write_file(np.dstack((img_cyan, img_cyan, img_zeros)), img.name, bit_depth, suffix="cyan")
-                if make_magenta_file:
-                    self.write_file(np.dstack((img_magenta, img_zeros, img_magenta)), img.name, bit_depth, suffix="magenta")
-                if make_yellow_file:
-                    self.write_file(np.dstack((img_zeros, img_yellow, img_yellow)), img.name, bit_depth, suffix="yellow")
+                self.write_file(merged, img_name, bit_depth)
+
+                if separate_CMY:
+                    img_zeros = np.zeros(d, dtype=pixel_type_string)
+                    if make_cyan_file:
+                        self.write_file(np.dstack((img_cyan, img_cyan, img_zeros)), img.name, bit_depth, suffix="cyan")
+                    if make_magenta_file:
+                        self.write_file(np.dstack((img_magenta, img_zeros, img_magenta)), img.name, bit_depth, suffix="magenta")
+                    if make_yellow_file:
+                        self.write_file(np.dstack((img_zeros, img_yellow, img_yellow)), img.name, bit_depth, suffix="yellow")
 
         self.num_images_converted += 1
         return
