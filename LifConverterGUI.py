@@ -149,6 +149,35 @@ class gui(basic_gui):
         print(f'Skipped {self.lif_object.num_images_skipped} images, '
               f'encountered errors in {self.lif_object.num_images_error} images/files\n')
 
+    def start_convert_single_image_in_file(self):
+
+        self.get_options_from_gui()
+        # If converting just one file, then always overwrite
+        self.conversion_options.overwrite_existing = True
+        self.lif_object = LifClass(conversion_options=self.conversion_options, root_window=self.root)
+
+        try:
+            file_path = self.lif_object.prompt_select_file()
+        except LifClass.UserCanceled:
+            self.status.set_text(0, "User canceled")
+            return
+
+        base_name = os.path.basename(file_path)
+        self.output_folder = os.path.dirname(file_path)
+        print(f'\nProcessing file "{base_name}"')
+        self.status.set_text(0, base_name)
+        # Update GUI now because opening/converting lif file might take a long time
+        self.root.update()
+
+        try:
+            self.lif_object.open_file(file_path)
+            n = self.lif_object.prompt_select_image_from_single_file()
+            self.lif_object.convert(n=n)
+        except Exception as e:
+            print("Error during conversion: " + str(e))
+        else:
+            self.print_results(self.lif_object)
+
     def start_convert_file(self):
 
         self.get_options_from_gui()
@@ -234,7 +263,8 @@ class gui(basic_gui):
         #    List of buttons at left top panel
         #
         ##################################################
-        values = [("Convert single LIF file", self.start_convert_file),
+        values = [("Convert single image within a LIF file", self.start_convert_single_image_in_file),
+                  ("Convert single LIF file", self.start_convert_file),
                   ("Convert folder", self.start_convert_folder)]
 
         self.button_list = self.add_boxed_button_column(frame1b, values,

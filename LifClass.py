@@ -210,6 +210,7 @@ class LifClass:
         img_cyan = None
         img_magenta = None
         img_yellow = None
+        img_grey = None
 
         make_cyan_file = False
         make_magenta_file = False
@@ -217,6 +218,11 @@ class LifClass:
 
         print(f'      Image size is: width {img.dims.x} x height {img.dims.y}')
         print(f'      Found {n_chan} color channels, bit depth is {bit_depth}')
+
+        if self.conversion_options.convert_format == self.Options.Format.jpg:
+            if img.dims.x > 65535 or img.dims.y > 65535:
+                print(f'        JPG only supports up to 65,535 x 65,535 pixels, skipping')
+                return
 
         d = None
 
@@ -318,7 +324,7 @@ class LifClass:
                     row += chunk_v
 
                 end = time.time()
-                print(f'          Completed in {end - start} seconds.')
+                print(f'          Completed in {end - start:.1f} seconds.')
 
                 if separate_ALL:
                     img_zeros = np.zeros(d, dtype=pixel_type_string)
@@ -349,6 +355,11 @@ class LifClass:
                     img_magenta = ar
                 elif color == "Yellow":
                     img_yellow = ar
+                elif color == "Gray" or color == "Grey":
+                    img_grey = ar
+                else:
+                    print(f'        Unrecognized color {color}, will skip this channel')
+                    continue
 
             if not separate_ALL:
                 # Write merged file
@@ -415,6 +426,12 @@ class LifClass:
                             img_green = img_green.astype(pixel_type)
                             img_blue = img_blue.astype(pixel_type)
 
+                if img_grey is not None:
+                    # Neither red nor green channel exists, just write normally.
+                    img_red = img_grey
+                    img_green = img_grey
+                    img_blue = img_grey
+
                 if img_yellow is not None:
                     if img_red is None and img_green is None:
                         # Neither red nor green channel exists, just write normally.
@@ -441,6 +458,10 @@ class LifClass:
                             # Have to "demote" type back down to original 8 or 16-bit.
                             img_green = img_green.astype(pixel_type)
                             img_red = img_red.astype(pixel_type)
+
+                if img_red is None and img_green is None and img_blue is None:
+                    print('      No colors are present, will not write file')
+                    return
 
                 if img_red is None:
                     img_red = np.zeros(d, dtype=pixel_type_string)
@@ -524,13 +545,53 @@ class LifClass:
                     # Demote back to original data type and rewrite
                     merged[row:row + chunk_v, ] = one_row.astype(np.uint16)
                     row += chunk_v
+            elif source_bit_depth == 12:
+                # JPG only supports 8-bit depth, so divide by 16 using
+                # memory-efficient method
+                chunk_v = 4
+                row = 0
+                d = merged.shape
+                num_rows = d[0]
+                while row < num_rows:
+                    if row + chunk_v > num_rows:
+                        # Final chunk may be smaller than the previous ones.
+                        chunk_v = num_rows - row
+                    # Convert one chunk to float
+                    one_row = merged[row:row + chunk_v, ].astype(float)
+                    one_row = one_row / 16
+                    # Truncate underflow and overflow values.
+                    one_row[one_row > 255] = 255
+                    # Demote back to original data type and rewrite
+                    merged[row:row + chunk_v, ] = one_row.astype(np.uint16)
+                    row += chunk_v
 
             cv2.imwrite(new_path, merged, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
         elif self.conversion_options.convert_format == self.Options.Format.tiff:
+
+            if source_bit_depth == 12:
+                # TIFF supports either 8 or 16 bit depth. 12-bit will need to be multiplied by 16
+                # using memory-efficient method
+                chunk_v = 4
+                row = 0
+                d = merged.shape
+                num_rows = d[0]
+                while row < num_rows:
+                    if row + chunk_v > num_rows:
+                        # Final chunk may be smaller than the previous ones.
+                        chunk_v = num_rows - row
+                    # Convert one chunk to float
+                    one_row = merged[row:row + chunk_v, ].astype(float)
+                    one_row = one_row * 16
+                    # Truncate underflow and overflow values.
+                    one_row[one_row > 65535] = 65535
+                    # Demote back to original data type and rewrite
+                    merged[row:row + chunk_v, ] = one_row.astype(np.uint16)
+                    row += chunk_v
+
             cv2.imwrite(new_path, merged)
 
         end = time.time()
-        print(f'      Completed in {end - start} seconds.')
+        print(f'      Completed in {end - start:.1f} seconds.')
 
     # Recursively finds metadata for all elements having a "Data/Image" subunit.
     def _recursive_metadata_find(self, tree, return_list=None, path=""):
