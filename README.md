@@ -3,17 +3,17 @@
 
 This project converts .LIF files to .TIF, and provides a simple GUI to control its functions.
 
-For some reason, it does not work for me under Python 3.11 or earlier, but is fine in Python 3.12 (there is
-something about tkinter.askopenfilename that doesn't work in the earlier Pythons. If anybody can explain why,
-please tell me).
+Has been tested on Python version 3.9 up to 3.12 and all work. In rare cases, it will crash at
+tkinter.askopenfilename, but that seems to be an isolated problem that is solved by recreating the
+environment.
 
-To use it, clone the repository, then install Python3.12 (or later), along with numpy and opencv:
+To use this program, clone the repository, then install Python along with numpy, opencv, and Pillow:
 
     pip install numpy
     pip install opencv-python
     pip install Pillow
 
-If those don't work, try the following instead:
+If the above commands don't work, try the following instead:
 
     python -m pip install numpy
     python -m pip install opencv-python
@@ -29,22 +29,19 @@ There is also a console version, but I haven't updated it in a while, so it is n
 
 ## CREATING EXE FILE FROM PYTHON:
 
-If you want to create a standalone executable (for Windows or Mac), you can do the following:
-
-Install auto-py-to-exe with:
+If you want to create a standalone executable (for Windows or Mac), first install auto-py-to-exe:
 
     pip install auto-py-to-exe
 
-You must install auto-py-to-exe in the SAME python environment that you will eventually run it in, e.g. don't install under
-anaconda if you intend to run from Windows command prompt. Actually, anaconda is NOT recommended as th .exe file
-will be about 4 times bigger (>200MB instead of 60MB).
+You must install auto-py-to-exe in the SAME python environment that you will eventually run it in, e.g. don't
+install under anaconda if you intend to run from Windows command prompt. Actually, anaconda is NOT
+recommended as the .exe file will be about 4 times bigger (>200MB instead of 60MB).
 
-You then have to find the .exe file which will be in the Scripts folder of the python installation. For example,
-under anaconda, it might be here:
+This creates an .exe file in the Scripts folder of the python installation. For example, under anaconda, it might be here:
 
     C:/Users/TomJhou/anaconda3/Scripts/auto-py-to-exe.exe
 
-(but I don't recommend that) or if installing under the system Python, try something like this:
+(but I don't recommend that) or if installing under system Python, it will be somewhere like this:
 
     C:/Users/TomJhou/AppData/Local/Packages/PythonSoftwareFoundation_Python3.8_qbz5n2.../LocalCache/local-packages/Python38/Scripts
 
