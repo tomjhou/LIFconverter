@@ -77,7 +77,7 @@ class LifClass:
             self.root_window.withdraw()
             self.root_window.attributes('-topmost', True)
 
-        file_path = filedialog.askopenfilename(filetypes=[("LIF files", "*.lif")])
+        file_path = filedialog.askopenfilename(filetypes=[("LIF files", "*.lif; *.xlef")])
 
         if file_path == "":
             raise self.UserCanceled
