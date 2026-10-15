@@ -36,6 +36,11 @@ dropped from the output name. Section numbers (for choosing which sections
 to convert) come from "section N" anywhere in the name, otherwise from the
 last number in the name.
 
+Pixel size comes from the TIFF resolution tags unless one is entered. A
+section whose TIFF has no calibration, or one outside 0.05-50 um/pixel
+(e.g. Photoshop's default 72 dpi), is not converted until a pixel size is
+entered.
+
 8-bit TIFFs are written as 8-bit. 12-bit data: the Leica TIFFs hold 12-bit values (0-4095) in 16-bit files,
 which is why they look dim. By default (input bits "auto") a section whose
 selected channels never exceed 4095 is multiplied by 16 (the same as the
@@ -286,8 +291,45 @@ def tiff_pixel_size_um(path):
         return None
 
 
+class PixelSizeError(ValueError):
+    pass
+
+
+# Pixel sizes outside this range (microns) are almost certainly not a
+# microscope calibration, e.g. 72/96/300 dpi written by default by Photoshop
+PLAUSIBLE_PIXEL_UM = (0.05, 50.0)
+
+PIXEL_SIZE_HINT = "enter the pixel size in the Pixel size box (or --pixel-size)"
+
+
+def resolve_pixel_size(path, opts):
+    """
+    Pixel size to write, as (microns, description). Uses opts.pixel_size if
+    given, otherwise the TIFF's resolution tags. Raises PixelSizeError if the
+    TIFF has no calibration or one that looks like a default print resolution.
+    """
+    if opts.pixel_size is not None:
+        lo, hi = PLAUSIBLE_PIXEL_UM
+        note = "" if lo <= opts.pixel_size <= hi else "  ** unusual value - please double-check **"
+        return opts.pixel_size, f"{opts.pixel_size:g} um (entered){note}"
+    um = tiff_pixel_size_um(path)
+    if um is None:
+        raise PixelSizeError(f"{os.path.basename(path)} has no pixel size in its "
+                             f"metadata; {PIXEL_SIZE_HINT}")
+    lo, hi = PLAUSIBLE_PIXEL_UM
+    if not lo <= um <= hi:
+        dpi = 25400.0 / um
+        raise PixelSizeError(
+            f"{os.path.basename(path)} says {um:g} um/pixel ({dpi:.0f} dpi), which "
+            f"looks like a default print resolution, not a microscope calibration; "
+            f"{PIXEL_SIZE_HINT}")
+    return um, f"{um:g} um (from TIFF)"
+
+
 def convert_section(files, channels, opts, output_path, log=print):
     t0 = time.time()
+    # Checked first, so a bad calibration fails before the slow image read
+    pixel_um, _ = resolve_pixel_size(files[channels[0]["tag"]], opts)
     planes = []
     for ch in channels:
         img = tifffile.imread(files[ch["tag"]])
@@ -318,13 +360,6 @@ def convert_section(files, channels, opts, output_path, log=print):
     data = np.stack(planes, axis=-1)
     del planes
     height, width, n_comp = data.shape
-
-    pixel_um = opts.pixel_size
-    if pixel_um is None:
-        pixel_um = tiff_pixel_size_um(files[channels[0]["tag"]])
-        if pixel_um is None:
-            pixel_um = 1.0
-            log("  WARNING: no pixel size in TIFF; writing 1.0 um")
 
     # PSNR is measured against the full-scale value, so the same dB is much
     # gentler on 8-bit data; these defaults give roughly 20-25:1 on our scans
@@ -391,17 +426,35 @@ def log_channels(channels, log):
         f"{c['tag']} -> '{c['name']}' {c['color']}" for c in channels))
 
 
-PREVIEW_ROW_STEP = 32  # preview samples every Nth row to estimate the data range
+# Preview estimates the data range from this many evenly spaced rows. A fixed
+# count (not every Nth row) keeps the read to a few MB however large the
+# file is: Windows read-ahead means every-Nth-row reads most of the file.
+PREVIEW_SAMPLE_ROWS = 128
 
 
-def sampled_max(path, row_step=PREVIEW_ROW_STEP):
-    """Max pixel value over every row_step-th row. Uncompressed TIFFs are
+# Windows file attributes of OneDrive/SharePoint "online-only" placeholders.
+# Opening such a file makes OneDrive download all of it.
+_CLOUD_ONLY_ATTRS = 0x00400000 | 0x00040000 | 0x00001000  # RECALL_ON_DATA_ACCESS | RECALL_ON_OPEN | OFFLINE
+
+
+def is_online_only(path):
+    """True for a cloud placeholder that isn't stored on this computer.
+    Checking the attributes doesn't trigger a download."""
+    try:
+        return bool(getattr(os.stat(path), "st_file_attributes", 0) & _CLOUD_ONLY_ATTRS)
+    except OSError:
+        return False
+
+
+def sampled_max(path, n_rows=PREVIEW_SAMPLE_ROWS):
+    """Max pixel value over n_rows evenly spaced rows. Uncompressed TIFFs are
     memory-mapped, so only those rows are read; others are read in full."""
     try:
         data = tifffile.memmap(path, mode="r")
-        return int(data[::row_step].max())
     except ValueError:
         return int(tifffile.imread(path).max())
+    rows = np.unique(np.linspace(0, data.shape[0] - 1, n_rows).astype(int))
+    return int(max(int(data[r].max()) for r in rows))
 
 
 def describe_scaling(dtypes, max_value, opts):
@@ -425,14 +478,17 @@ def preview_folder(input_dir, output_dir, channels, opts, sections=None,
     """
     List the sections, input files and output files a conversion would use,
     with each section's pixel size and how its values will be scaled. Reads
-    TIFF headers plus every PREVIEW_ROW_STEP-th row of pixels.
-    Returns (n_to_convert, n_to_skip).
+    TIFF headers plus PREVIEW_SAMPLE_ROWS rows of pixels per file, except for
+    OneDrive online-only files, which are never opened (opening one would
+    download all of it). Returns (n_to_convert, n_to_skip).
     """
     jobs, incomplete = plan_conversion(input_dir, output_dir, channels, opts, sections)
     n_skip = sum(j["skip"] for j in jobs)
     log(f"Preview: {len(jobs)} section(s) match; output folder '{output_dir}'")
     log_channels(channels, log)
     name_width = max([len(j["name"]) for j in jobs] + [10])
+    online_count = 0
+    online_bytes = 0
     for job in jobs:
         if stop_event is not None and stop_event.is_set():
             raise UserCanceled
@@ -441,8 +497,17 @@ def preview_folder(input_dir, output_dir, channels, opts, sections=None,
         shapes = set()
         dtypes = []
         max_value = None
+        any_online = False
         for ch in channels:
             path = job["files"][ch["tag"]]
+            if is_online_only(path):
+                any_online = True
+                if not job["skip"]:
+                    online_count += 1
+                    online_bytes += os.path.getsize(path)
+                log(f"    {ch['tag']}: {os.path.basename(path)}   "
+                    f"(online-only in OneDrive - not downloaded for preview)")
+                continue
             try:
                 with tifffile.TiffFile(path) as tif:
                     page = tif.pages[0]
@@ -460,21 +525,28 @@ def preview_folder(input_dir, output_dir, channels, opts, sections=None,
             log(f"    {ch['tag']}: {os.path.basename(path)}   ({info})")
         if len(shapes) > 1:
             log("    ** WARNING: channel images differ in size; this section will fail **")
-        if opts.pixel_size is not None:
-            pixel = f"{opts.pixel_size:g} um (entered)"
+        first_path = job["files"][channels[0]["tag"]]
+        if opts.pixel_size is None and is_online_only(first_path):
+            pixel = "not checked (file is online-only)"
         else:
             try:
-                um = tiff_pixel_size_um(job["files"][channels[0]["tag"]])
-            except Exception:
-                um = None
-            pixel = f"{um:g} um (from TIFF)" if um else "not in TIFF - 1.0 um will be written"
+                _, pixel = resolve_pixel_size(first_path, opts)
+            except PixelSizeError as e:
+                pixel = f"** {e} - this section will fail **"
+            except Exception as e:
+                pixel = f"** can't read: {e} **"
         log(f"    Pixel size: {pixel}")
-        if dtypes:
+        if any_online:
+            log("    Values: not checked (some files are online-only); decided during conversion")
+        elif dtypes:
             log(f"    Values: {describe_scaling(dtypes, max_value, opts)}")
     for name, missing in incomplete:
         log(f"Not converted: '{name}' - missing {', '.join(missing)}")
     if not jobs:
         log("No matching sections found.")
+    if online_count:
+        log(f"NOTE: {online_count} input file(s) ({online_bytes / 1e9:.1f} GB) are online-only "
+            f"in OneDrive; converting will download them to this computer.")
     log(f"Will convert {len(jobs) - n_skip}, skip {n_skip} (already exist).")
     return len(jobs) - n_skip, n_skip
 
