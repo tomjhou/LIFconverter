@@ -68,3 +68,15 @@ Here are the changes I've made from the pypi.org version 0.6.5:
 
 The python lif viewer is based on this java version:
 https://github.com/ome/bioformats/blob/master/components/formats-gpl/src/loci/formats/in/LIFReader.java
+
+## TIFF TO NEUROINFO JP2
+
+`tifs_to_jp2.py` merges per-channel greyscale TIFFs exported from Leica (`<section>--C00.tif` ... `--C03.tif`)
+into one multi-channel 16-bit JPEG2000 per section, with the same header layout NeuroInfo/Microfile+ writes
+(channel colors, layer names and pixel size in an MBF XMP block). 12-bit data is scaled x16 automatically.
+
+    pip install numpy tifffile imagecodecs
+    python tifs_to_jp2.py
+
+With no arguments it opens a GUI (up to 4 channels; a channel whose label is blank is left out). Run
+`python tifs_to_jp2.py -h` for the command-line version.
