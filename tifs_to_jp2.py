@@ -41,30 +41,98 @@ section whose TIFF has no calibration, or one outside 0.05-50 um/pixel
 (e.g. Photoshop's default 72 dpi), is not converted until a pixel size is
 entered.
 
-8-bit TIFFs are written as 8-bit. 12-bit data: the Leica TIFFs hold 12-bit values (0-4095) in 16-bit files,
-which is why they look dim. By default (input bits "auto") a section whose
-selected channels never exceed 4095 is multiplied by 16 (the same as the
-ImageJ Convert16 macro) so it fills the 16-bit range.
+8-bit TIFFs are written as 8-bit. 12-bit data: the Leica TIFFs hold 12-bit
+values (0-4095) in 16-bit files, which is why they look dim. By default
+(input bits "auto") a section whose selected channels never exceed 4095 is
+multiplied by 16 (the same as the ImageJ Convert16 macro) so it fills the
+16-bit range.
 
-Requires: numpy, tifffile, imagecodecs (pip install tifffile imagecodecs).
+Requires: numpy, tifffile, imagecodecs. Any that are missing are installed
+automatically with pip into the Python environment running this script.
 """
 
 import argparse
 import datetime
 import glob
+import importlib
+import importlib.util
 import json
 import os
 import queue
 import re
 import struct
+import subprocess
 import sys
 import threading
 import time
 from types import SimpleNamespace
 
-import numpy as np
-import tifffile
-import imagecodecs
+
+# Import name -> pip package name
+REQUIRED_PACKAGES = {"numpy": "numpy", "tifffile": "tifffile", "imagecodecs": "imagecodecs"}
+
+
+def _missing_packages():
+    return [pip_name for module, pip_name in REQUIRED_PACKAGES.items()
+            if importlib.util.find_spec(module) is None]
+
+
+def _report_install_failure(message):
+    print(message, file=sys.stderr)
+    if len(sys.argv) == 1:
+        # GUI launch, possibly with no console window to show the message
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror("Missing libraries", message)
+            root.destroy()
+        except Exception:
+            pass
+    sys.exit(1)
+
+
+def ensure_packages():
+    """Install any missing REQUIRED_PACKAGES into this interpreter's environment."""
+    missing = _missing_packages()
+    if not missing:
+        return
+    if getattr(sys, "frozen", False):
+        _report_install_failure(f"This build is missing {', '.join(missing)} and "
+                                f"can't install packages itself.")
+    print(f"Installing missing libraries ({', '.join(missing)}) into the Python at\n"
+          f"  {sys.executable}\nThis only happens once and may take a minute...", flush=True)
+    if importlib.util.find_spec("pip") is None:
+        subprocess.run([sys.executable, "-m", "ensurepip", "--upgrade"])
+    # Prebuilt wheels only: building numpy/imagecodecs from source needs a C
+    # compiler and native libraries, and fails after a long wait without them
+    result = subprocess.run([sys.executable, "-m", "pip", "install",
+                             "--only-binary", ":all:", *missing])
+    importlib.invalidate_caches()
+    # pip falls back to a per-user install when site-packages isn't writable;
+    # that folder may not have existed (so isn't on sys.path) when Python started
+    import site
+    user_site = site.getusersitepackages()
+    if site.ENABLE_USER_SITE and os.path.isdir(user_site) and user_site not in sys.path:
+        site.addsitedir(user_site)
+    still_missing = _missing_packages()
+    if still_missing:
+        version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        _report_install_failure(
+            f"Couldn't install {', '.join(still_missing)} for Python {version} "
+            f"(pip exit code {result.returncode}).\n\n"
+            f"If this Python version is very new, prebuilt packages may not exist "
+            f"for it yet. Try running the script with an older Python, e.g.\n"
+            f"  py -3.12 tifs_to_jp2.py")
+    print("Libraries installed.\n")
+
+
+ensure_packages()
+
+import numpy as np  # noqa: E402  (imported after ensure_packages)
+import tifffile  # noqa: E402
+import imagecodecs  # noqa: E402
 
 
 NAMED_COLORS = {

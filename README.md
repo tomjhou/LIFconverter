@@ -75,8 +75,11 @@ https://github.com/ome/bioformats/blob/master/components/formats-gpl/src/loci/fo
 into one multi-channel 16-bit JPEG2000 per section, with the same header layout NeuroInfo/Microfile+ writes
 (channel colors, layer names and pixel size in an MBF XMP block). 12-bit data is scaled x16 automatically.
 
-    pip install numpy tifffile imagecodecs
     python tifs_to_jp2.py
 
-With no arguments it opens a GUI (up to 4 channels; a channel whose label is blank is left out). Run
-`python tifs_to_jp2.py -h` for the command-line version.
+The first run installs any missing libraries (numpy, tifffile, imagecodecs) with pip into whichever
+Python environment is running the script.
+
+With no arguments it opens a GUI (up to 4 channels; a channel whose label is blank is left out; Preview
+lists the files, pixel size and scaling before converting). Run `python tifs_to_jp2.py -h` for the
+command-line version.
