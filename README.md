@@ -1,4 +1,9 @@
 
+> **This repository is no longer maintained.** Development of these converters (the LIF converter and
+> `tifs_to_jp2.py`) continues in the `FileConverters` folder of
+> [ABC_atlas_browser](https://github.com/tomjhou/ABC_atlas_browser/tree/main/FileConverters).
+> This repository is kept as a final snapshot.
+
 ## Overview
 
 This project converts .LIF files to .TIF, and provides a simple GUI to control its functions.
